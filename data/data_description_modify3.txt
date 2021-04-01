@@ -1,0 +1,26 @@
+****************************************************************************************************
+Description of the file "modify3.jdf"
+Updated: 2021-03-29
+****************************************************************************************************
+
+1. Data cleaning
+(a) users: unlogged users are deleted
+(b) articles: articles appearing in the first 20 minute are deleted
+(c) articles: articles with num. of observations less than 10,000 are deleted
+
+2. Variables
+-time: timestamp
+-display: display article id
+-click: whether the user clicked the display article
+-date_neg6: GMT-6 date of the timestamp (from 2011-10-01 to 2011-10-16)
+-col3~col53: article ids in the pool
+-u1~u136: user features (u1 is constant one)
+note:
+18 features are nonvariant;
+Pairs (u21,u22), (u15,u16), (u13,u14), (u119, u120) are highly correlated;
+In total there are 113 non-const features.
+
+3. Data stream
+"stream_tun.jdf": data before 2011-10-13, Thursday. For estimation on prior parameters.
+"stream_tun2.jdf": data on 2011-10-06 (from 8:00 am). For tuning hyper-parameters.
+"stream_evl.jdf": data on 2011-10-13 (from 8:00 am). For evaluation.

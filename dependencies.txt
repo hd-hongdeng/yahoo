@@ -1,0 +1,43 @@
+Dependencies:
+```
+  [6e4b80f9] BenchmarkTools v0.6.0
+  [a93c6f00] DataFrames v0.22.7
+  [864edb3b] DataStructures v0.18.9
+  [38e38edf] GLM v1.4.1
+  [babc3d20] JDF v0.3.0
+  [23fbe1c1] Latexify v0.14.12
+  [ff71e718] MixedModels v3.5.0
+  [b98c9c47] Pipe v1.3.0
+  [91a5bcdd] Plots v1.11.1
+  [49802e3a] ProgressBars v1.0.0
+  [d519eb52] RegressionTables v0.5.0
+  [f3b207a7] StatsPlots v0.14.19
+  [ade2ca70] Dates
+  [37e2e46d] LinearAlgebra
+  [9a3f8284] Random
+  [9e88b42a] Serialization
+  [10745b16] Statistics
+```
+
+There is a project environment that controls the packages. Run the following command in the command line:
+
+```
+julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
+
+```
+
+Note 1: in case of path problem in Mac,
+
+```
+export PATH="/Applications/Julia-1.5.app/Contents/Resources/julia/bin:$PATH"
+
+```
+
+Note 2: to check status of dependences in the Julia package manager, use "status".
+
+Log:
+When I created the environment, the following packages are added:
+
+```
+add DataFrames DataStructures Dates Statistics LinearAlgebra Random JDF Serialization Latexify Pipe Plots StatsPlots GLM RegressionTables MixedModels BenchmarkTools ProgressBars
+```
