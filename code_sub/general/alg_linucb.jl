@@ -5,34 +5,61 @@ Description:
 Creating simulated histories for linucb.
 ===============================================================================#
 
-
 """
-Multiple Simulator for algorithm: linUCB
+Decision rule at time t
 """
-function simulator_linucb_mtp(
-    n::Int,
-    stream::DataFrame,
-    maxstep::Int,
-    random_seed::Vector{Int},
-    p::Int;
-    α::Real = sqrt(2)
-    )::Vector{Array{Union{Missing,Int}}}
+function run_linucb(
+    armset_t::Vector{String},
+    display_linucb::DataFrame,
+    feature_t::Vector{<:Real},
+    α::Real,
+)::String
 
-    println("Algorithm: Lin-UCB, MC: ", n)
+    # Extract information for arm set at time t
+    display_linucb_t = filter(:display => in(Set(armset_t)), display_linucb)
 
-    # Initialization-simulator
-    mtp_histories = Array{Array{Union{Missing,Int}}}(undef, n)
-    # Run n simulations
-    Threads.@threads for i = ProgressBar(1:n)
-        # Update the storage array
-        seed = random_seed[i]
-        mtp_histories[i] = simulator_linucb(stream, maxstep, seed, p; α = α)
+    # Check whether the articles are new
+    if any(iszero, display_linucb_t.nchosen) == false
+        # Compute UCB based on features
+        ucb_center =
+            map((muhat -> feature_t' * muhat), display_linucb_t.muhat)
+
+        ucb_width =
+            map((Phat -> sqrt(feature_t' * inv(Phat) * feature_t)), display_linucb_t.Phat)
+
+        display_linucb_t.ucb = ucb_center .+ α .* ucb_width
+
+        # Select the article with max. est. ucb
+        ucb_max = maximum(display_linucb_t.ucb)
+        chosen_idx = findall(isequal(ucb_max), display_linucb_t.ucb)
+    else 
+        # Choose one new article randomly
+        chosen_idx = findall(iszero, display_linucb_t.nchosen)  
     end
-    return mtp_histories
+    
+    chosen = display_linucb_t.display[rand(chosen_idx)]    
+
+    return chosen
 end
 
 """
-Simulator for algorithm: linUCB
+Update algorithm's parameter
+"""
+function update_linucb(display_linucb_idx::DataFrameRow, 
+                       reward_t::Real,
+                       feature_t::Vector{<:Real})::DataFrameRow
+    # Update the # of times for which article has been chosen
+    display_linucb_idx.nchosen += 1
+    # Update the algorithm's parameters
+    display_linucb_idx.c += feature_t * reward_t
+    display_linucb_idx.Phat += feature_t * feature_t'
+    display_linucb_idx.muhat = inv(display_linucb_idx.Phat) * display_linucb_idx.c
+
+    return display_linucb_idx
+end
+
+"""
+Create one simulated history
 """
 function simulator_linucb(
     stream::DataFrame,
@@ -40,28 +67,25 @@ function simulator_linucb(
     seed::Int,
     p::Int;
     α::Real = sqrt(2)
-)::Array{Union{Missing,Int}}
+)::Array{Union{Missing, Int64},1}
 
-    # Initialization
-
+    # Initialization: one simulated history
     selected_events = Array{Union{Missing,Int}}(missing, maxstep)
+    # Set random seed
     Random.seed!(seed)
 
-    # Initialization-linucb
+    # Initialization: algorithm's prior
     display_linucb = DataFrame(
         :display => unique(stream.display),
         :nchosen => 0,
-        :X => Ref(zeros(1, p)),
-        :y => Ref(zeros(1)),
         :c => Ref(zeros(p)),
         :Phat => Ref(Array{Float64}(Matrix(I, p, p))),
         :muhat => Ref(zeros(p))
     )
 
-    # Create the history for algorithm limucb
+    # Create one history for the algorithm
     j, i = 0, 0
     while (j < maxstep && i < nrow(stream))
-        #println("j = $j, i = $i")
 
         # Select one candidate event
         i += 1         # One event in stream is used
@@ -88,62 +112,52 @@ function simulator_linucb(
 
             # One event is added to the history
             j += 1
-            #println("j=$j")
 
             # Reveal feedback
             reward_t = candidate_t.click
 
-            # Update history
-
+            # Store the index of the retained event
             selected_events[j] = i
 
-            # Update algorithm
-            # Find the article that was chosen
+            # Update algorithm's parameter
+            # Find the chosen article
             idx = findfirst(isequal(chosen_t), display_linucb.display)
-            # Log its update
-            display_linucb[idx, :nchosen] += 1
-            # Update the algorithm
-
-            display_linucb[idx, :c] += feature_t * reward_t
-            display_linucb[idx, :Phat] += feature_t * feature_t'
-            μ̂ = inv(display_linucb[idx, :Phat]) * display_linucb[idx, :c]
-
-            display_linucb[idx, :muhat] = μ̂
+            # Update chosen article's parameters
+            display_linucb[idx,:] = update_linucb(display_linucb[idx,:], 
+                                                reward_t,
+                                                feature_t)
 
         end
     end
-
 
     return selected_events
 
 end
 
+
 """
-Run algorithm: linucb
+Create multiple simulated histories with given steps 
 """
-function run_linucb(
-    armset_t::Vector{String},
-    display_linucb::DataFrame,
-    feature_t::Vector{<:Real},
-    α::Real,
-)::String
+function simulator_linucb_mtp(
+    n::Int,
+    stream::DataFrame,
+    maxstep::Int,
+    random_seed::Vector{Int},
+    p::Int;
+    α::Real = sqrt(2)
+    )::Array{Array{Union{Missing, Int64},1},1}
 
-    # Extract information for arm set at time t
-    display_linucb_t = filter(:display => in(Set(armset_t)), display_linucb)
+    # Initialization: `n` histories with length `maxstep`
+    mtp_histories = Array{Array{Union{Missing,Int}}}(undef, n)
 
-    # Compute UCB based on features
-    ucb_center =
-        map((x -> feature_t' * x), display_linucb_t.muhat)
+    # Run n simulations
+    Threads.@threads for i = ProgressBar(1:n)
+        # Set random seed
+        seed = random_seed[i]
+        # Create one history
+        mtp_histories[i] = simulator_linucb(stream, maxstep, seed, p; α = α)
+    end
 
-    ucb_width =
-        map((x -> sqrt(feature_t' * inv(x) * feature_t)), display_linucb_t.Phat)
-
-    display_linucb_t.ucb = ucb_center .+ α .* ucb_width
-
-    # Select the article with max. est. ucb
-    ucb_max = maximum(display_linucb_t.ucb)
-    chosen_idx = findall(isequal(ucb_max), display_linucb_t.ucb)
-    chosen = display_linucb_t.display[rand(chosen_idx,1)[1]]
-
-    return chosen
+    return mtp_histories
 end
+

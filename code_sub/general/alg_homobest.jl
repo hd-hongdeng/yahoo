@@ -7,7 +7,7 @@ Description:
 """
 Simulator for algorithm: homogeneous optimal policy
 """
-function simulator_homobest(stream::Union{DataFrame,SubDataFrame}, maxstep::Int, homobest::DataFrame)::Vector{Int}
+function simulator_homobest(stream::Union{DataFrame,SubDataFrame}, maxstep::Int, homobest::DataFrame)::Array{Union{Missing, Int64},1}
 
     # Initialization (history)
 

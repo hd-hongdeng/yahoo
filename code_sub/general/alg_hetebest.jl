@@ -7,7 +7,7 @@ Description:
 """
 Simulator for algorithm: Heterogeneous optimal policies with OLS/Logit/LMEM and BPP
 """
-function simulator_hetebest(stream::Union{DataFrame,SubDataFrame}, maxstep::Int, strategy::Dict)
+function simulator_hetebest(stream::Union{DataFrame,SubDataFrame}, maxstep::Int, strategy::Dict)::Array{Union{Missing, Int64},1}
 
     # Initialization (history)
 

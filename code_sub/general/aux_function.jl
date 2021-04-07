@@ -253,3 +253,13 @@ function plot_limeprediction(result_limeucb_one, stream, limeucbalpha)
 
     return plt_all
 end
+
+"""
+Tentative: Check each history's length
+"""
+function check_steps(result::Array{Array{Union{Missing, Int64},1},1})
+    full = @. any(ismissing, result)
+    full_all = any(isequal(true), full)
+    full_all && println("At least one history does not reach desired steps!")
+    #return full_all, full
+end

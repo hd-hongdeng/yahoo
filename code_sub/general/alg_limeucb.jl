@@ -2,12 +2,9 @@
 Title: Function - algorithm : LIME-UCB
 Date: 2021-03-29
 Description:
-Compute the index given new feature vector;
 Create a sythetic history;
 Create multiple sythetic histories.
 ===============================================================================#
-
-#--- (0) Essential functions
 
 """
 Compute the UCB for one article, given a new feature vector
@@ -30,63 +27,128 @@ function ucb_limeucb(
 end
 
 """
-Select one artcile from the available articles by LIME-UCB algorithm
+Decision rule at time t
 """
 function run_limeucb(
     armset_t::Vector{String}, # Available articles
     display_limeucb::DataFrame, # Statistics of LIME-UCB (article-specific parameters)
     fe_limeucb::Dict, # Statistics of LIME-UCB (population-level parameters)
-    feature_t::Vector, # New feature vector
+    feature_t::Vector{<:Real}, # New feature vector
     α::Real, # Learning rate
 )::String
+
     # Keep only available articles for the following computation
     display_limeucb_t = filter(:display => in(Set(armset_t)), display_limeucb)
 
-    # Compute UCBs for all available articles based on the new feature vector
-    ucbs = [
-        ucb_limeucb(
-            feature_t,
-            fe_limeucb["fe_mu"],
-            fe_limeucb["fe_var"],
-            row.rho,
-            row.bhat,
-            row.omg,
-            α,
-        ).ucb for row in eachrow(display_limeucb_t)
-    ]
-
-    # Select the article with max. UCB arbitrarily
-    max_ucb = maximum(ucbs)
-    chosen_idx = rand(findall(isequal(max_ucb), ucbs), 1)[1]
-    chosen = display_limeucb_t.display[chosen_idx]
+    # Check whether the articles are new
+    if any(iszero, display_limeucb_t.nchosen) == false
+        # Compute UCBs for all available articles based on the new feature vector
+        ucbs = [
+            ucb_limeucb(
+                feature_t,
+                fe_limeucb["fe_mu"],
+                fe_limeucb["fe_var"],
+                row.rho,
+                row.bhat,
+                row.omg,
+                α,
+            ).ucb for row in eachrow(display_limeucb_t)
+        ]
+        # Select the article with max. UCB arbitrarily
+        max_ucb = maximum(ucbs)
+        chosen_idx = findall(isequal(max_ucb), ucbs)
+    else
+        # Choose one new article randomly
+        chosen_idx = findall(iszero, display_limeucb_t.nchosen)    
+    end
+        
+    chosen = display_limeucb_t.display[rand(chosen_idx)]
 
     return chosen
 end
 
-#--- (1) Complete version of LIME-UCB
 """
-Create one history when implementing LIME-UCB (Complete Version)
+Update algorithm's parameter
+"""
+# RE
+function update_limeucb_re(display_limeucb_idx::DataFrameRow, 
+                           reward_t::Real,
+                           feature_t::Vector{<:Real},
+                           prior_limeucb::Dict;
+                           update_fe::Bool = false
+                           )::DataFrameRow
+    # Update the # of times for which article has been chosen
+    display_limeucb_idx.nchosen += 1
+    # Update the algorithm's parameters
+    # Update the design matrix
+    display_limeucb_idx.X = vcat(display_limeucb_idx.X, feature_t')
+    # Update the reward vector
+    display_limeucb_idx.y = vcat(display_limeucb_idx.y, reward_t)
+    # Update RE parameters
+    𝐗 = display_limeucb_idx.X[Not(1), :] # The first element is for initialization
+    𝐲 = display_limeucb_idx.y[Not(1)]   # The first element is for initialization
+    σ² = prior_limeucb["noise_var0"]
+    Ω = prior_limeucb["re_var0"]
+    Ω̃ = inv((1 / σ²) * 𝐗' * 𝐗 + inv(Ω))
+    display_limeucb_idx.omg = Ω̃
+    display_limeucb_idx.rho = Ω̃ * ((1 / σ²) * 𝐗' * 𝐗)
+    display_limeucb_idx.bhat = Ω̃ * ((1 / σ²) * 𝐗' * 𝐲)
+
+    if update_fe == true
+        T = display_limeucb_idx.nchosen
+        c_lhs = 𝐗' * inv(𝐗 * Ω * 𝐗' + σ² * Matrix(I, T, T))
+        display_limeucb_idx.c_var = c_lhs * 𝐗
+        display_limeucb_idx.c_mu = c_lhs * 𝐲
+    end 
+
+    return display_limeucb_idx
+end
+
+# FE
+function update_limeucb_fe(display_limeucb::DataFrame,
+                           prior_limeucb::Dict)::Dict
+        
+        # Update FE parameters
+        # Select the articles that have been chosen
+        df_c = @pipe filter(:nchosen => >(0), display_limeucb) |>
+                   select(_, :display, :nchosen, :c_var, :c_mu)
+        # Compute new FE across all articles
+        c_vars = sum(df_c.c_var)
+        c_mus = sum(df_c.c_mu)
+        Ωᵦ = prior_limeucb["fe_var0"]
+        μᵦ = prior_limeucb["fe_mu0"]
+        Ω̃ᵦ = inv(c_vars + inv(Ωᵦ))
+        μ̃ᵦ = Ω̃ᵦ * (c_mus + inv(Ωᵦ) * μᵦ)
+
+        # Store the updated FE parameters
+        fe_limeucb = Dict(
+            "fe_var" => Ω̃ᵦ,
+            "fe_mu" => μ̃ᵦ
+        )
+    return fe_limeucb
+end
+
+"""
+Create one simulated history
 """
 function simulator_limeucb(
     stream::DataFrame, # A stream of events to go through
     maxstep::Int, # Desired number of steps for one sythetic history
-    #display_limeucb::DataFrame, # Statistics of LIME-UCB (article-specific parameters)
-    #fe_limeucb::Dict, # Statistics of LIME-UCB (population-level parameters)
-    #featurenames::Array, # Names of features in the data stream
     seed::Int,
-    prior_limeucb::Dict,
-    p::Int; # Initialization of LIME-UCB;
+    prior_limeucb::Dict; # Initialization of LIME-UCB;
     α::Real = sqrt(2), # Learning rate
     update_fe::Bool = false
-)::NamedTuple
+)::Array{Union{Missing, Int64},1}
 
-    # Initialization: a collection of event indices
+    # Initialization: one simulated history
     selected_events = Array{Union{Missing,Int}}(missing, maxstep)
+    # Set random seed
     Random.seed!(seed)
     # A set of articles (in the pool) seen by the algorithm
-    articleseen = Set{String}()
+    #articleseen = Set{String}()
 
-    # Initialization of LIME-UCB
+    # Initialization: algorithm's prior
+    p = length(prior_limeucb["fe_mu0"])
     display_limeucb = DataFrame(
         :display => unique(stream.display),
         :nchosen => 0,
@@ -118,7 +180,12 @@ function simulator_limeucb(
         feature_t = candidate_t.profile |> collect
 
         # Run algorithm
-        chosen_t = run_limeucb(armset_t, display_limeucb, fe_limeucb, feature_t, α)
+        chosen_t = run_limeucb(
+                    armset_t, 
+                    display_limeucb, 
+                    fe_limeucb, 
+                    feature_t, 
+                    α)
 
         # Factual display
         display_t = candidate_t.display
@@ -128,8 +195,6 @@ function simulator_limeucb(
 
             # One event is added to the history
             j += 1
-            # Print steps
-            #(mod(j, printstep) == 0) && println("Progress: $(round(j/maxstep*100))")
 
             # Reveal feedback
             reward_t = candidate_t.click
@@ -138,105 +203,54 @@ function simulator_limeucb(
             selected_events[j] = i
 
             # Label articles that have been seen in the pool
-            articleseen = union(articleseen, Set(armset_t))
+            #articleseen = union(articleseen, Set(armset_t))
 
-            # Update algorithm
+            # Update algorithm's parameter
             # Find the article that was chosen
             idx = findfirst(isequal(chosen_t), display_limeucb.display)
-            # A dataframerow that contains information on the chosen articles
-            row = display_limeucb[idx, :]
-            # Log its update
-            T = row.nchosen + 1
-            # Update the design matrix
-            design = vcat(row.X, feature_t')
-            # Update the reward vector
-            reward = vcat(row.y, reward_t)
-            # Update RE parameters
-            𝐗 = design[Not(1), :] # The first element is for initialization
-            𝐲 = reward[Not(1)]   # The first element is for initialization
-            σ² = prior_limeucb["noise_var0"]
-            Ω = prior_limeucb["re_var0"]
-            Ω̃ = inv((1 / σ²) * 𝐗' * 𝐗 + inv(Ω))
-            ρ = Ω̃ * ((1 / σ²) * 𝐗' * 𝐗)
-            b̂ = Ω̃ * ((1 / σ²) * 𝐗' * 𝐲)
-
-            if update_fe == false
-                # Store the updated RE parameters
-                display_limeucb[idx, Not([:c_var, :c_mu])] =
-                    (chosen_t, T, ρ, b̂, Ω̃, design, reward)
-            else
-                # Prepare the two consts for updating FE parameter
-                c_lhs = 𝐗' * inv(𝐗 * Ω * 𝐗' + σ² * Matrix(I, T, T))
-                c_var = c_lhs * 𝐗
-                c_mu = c_lhs * 𝐲
-                # Update FE parameters
-                # Select the articles that have been seen
-                df_c = filter(
-                    :display => in(articleseen),
-                    display_limeucb[!, [:display, :c_var, :c_mu]],
-                )
-                c_vars = sum(df_c.c_var)
-                c_mus = sum(df_c.c_mu)
-                Ωᵦ = prior_limeucb["fe_var0"]
-                μᵦ = prior_limeucb["fe_mu0"]
-                Ω̃ᵦ = inv(c_vars + inv(Ωᵦ))
-                μ̃ᵦ = Ω̃ᵦ * (c_mus + inv(Ωᵦ) * μᵦ)
-
-                # Store the updated FE parameters
-                fe_limeucb["fe_var"] = Ω̃ᵦ
-                fe_limeucb["fe_mu"] = μ̃ᵦ
-
-                # Store the updated RE parameters
-                display_limeucb[idx, :] =
-                    (chosen_t, T, ρ, b̂, Ω̃, design, reward, c_var, c_mu)
-            end
-
+            # Update chosen article's parameters
+            display_limeucb[idx,:] = update_limeucb_re(display_limeucb[idx,:], 
+                                                    reward_t,
+                                                    feature_t,
+                                                    prior_limeucb;
+                                                    update_fe = update_fe)
+            if update_fe == true  
+                fe_limeucb = update_limeucb_fe(display_limeucb, 
+                                                prior_limeucb)
+            end                                  
 
         end
     end
-    #println("share of target steps = $(round(j/maxstep*100))")
-    #println("share of stream = $(round(i/nrow(stream)*100)) \n------\n")
 
-
-    # Output in a NamedTuple
-    result = (
-        selected_events = selected_events,
-        display_limeucb = display_limeucb, # RE parameter
-        fe_limeucb = fe_limeucb,           # FE parameter
-        articleseen = articleseen
-    )
-
-    return result
+    return selected_events
 
 end
 
 """
-Create n histories for evaluating LIME-UCB
+Create multiple simulated histories with given steps 
 """
 function simulator_limeucb_mtp(
     n::Int, # Number of MC simulations
     stream::DataFrame, # A stream of events to go through
     maxstep::Int, # Desired number of steps for one sythetic history
     random_seed::Vector{Int},
-    prior_limeucb::Dict,
-    p::Int;
+    prior_limeucb::Dict;
     α::Real = sqrt(2), # Learning rate
-    update_fe = false
-)::Vector{NamedTuple}
+    update_fe::Bool = false
+)::Array{Array{Union{Missing, Int64},1},1}
 
-    println("Algorithm: LIME-UCB, MC: ", n)
-    # Initialization: for multiple histories
-    mtp_histories = Array{NamedTuple}(undef, n)
+    # Initialization: `n` histories with length `maxstep`
+    mtp_histories = Array{Array{Union{Missing,Int}}}(undef, n)
     # Create n histories
     Threads.@threads for i = ProgressBar(1:n)
-        # Update the storage array
+        # Set random seed
         seed = random_seed[i]
+        # Create one history
         mtp_histories[i] = simulator_limeucb(
             stream,
             maxstep,
             seed,
-            prior_limeucb,
-            p;
+            prior_limeucb;
             α = α,
             update_fe = update_fe
         )
@@ -246,11 +260,10 @@ function simulator_limeucb_mtp(
 end
 
 
-
 """
 Tentative: Compute the UCBs for available articles, given a new feature vector
 """
-function ucbs_limeucb(
+function get_ucbs(
     armset_t::Vector{String}, # Available articles
     display_limeucb::DataFrame, # Statistics of LIME-UCB (article-specific parameters)
     fe_limeucb::Dict, # Statistics of LIME-UCB (population-level parameters)

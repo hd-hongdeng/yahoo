@@ -1,12 +1,34 @@
+# This script is messy, and used for analysing rewards only.
 
-#=
 #--- Load simulation results
-result_random = open(deserialize, "data/result_random.bin")
-result_opt = open(deserialize, "data/result_opt.bin")
-result_ucb = open(deserialize, "data/result_ucb.bin")
-result_linucb = open(deserialize, "data/result_linucb.bin")
-result_limeucb = open(deserialize, "data/result_limeucb.bin")
-=#
+trystep = 50_000
+n_sm = 10
+result_random = open(deserialize, "result/result_random_$(trystep)_$(n_sm).bin")
+result_opt = open(deserialize, "result/result_opt_$(trystep)_$(n_sm).bin")
+result_ucb = open(deserialize, "result/result_ucb_$(trystep)_$(n_sm).bin")
+result_linucb = open(deserialize, "result/result_linucb_$(trystep)_$(n_sm).bin")
+result_limeucb = open(deserialize, "result/result_limeucb_$(trystep)_$(n_sm).bin")
+learning_rate = open(deserialize, "result/learning_rate_$(trystep)_$(n_sm).bin")
+random_seed = open(deserialize, "result/random_seed_$(trystep)_$(n_sm).bin")
+
+#--- Load stream
+# Load data stream for evaluation.
+#stream_evl = loadjdf("data/stream_evl_long.jdf") # In Atom
+stream_evl = loadjdf("data/stream_evl_long.jdf") |> DataFrame # In VS code
+
+# Extract column names of the user features
+user_features = propertynames(stream_evl)[occursin.(r"u", names(stream_evl))]
+# Compute feature length.
+p = length(user_features)
+
+# Check the share of events used in the stream
+far_random = maximum(maximum.(skipmissing.(result_random)))
+share_random = far_random / nrow(stream_evl) * 100
+println("Share of used events for random policy: ", round(share_random, digits = 2), "%")
+
+# Subset data stream for optimal policies
+stream_4opt_far = Int(ceil(far_random * 1.05))
+stream_4opt = @view stream_evl[1:stream_4opt_far, :]
 
 #--- Optimal policies
 # Collect optimal policies' names
@@ -56,7 +78,7 @@ rename!(
 )
 sort!(countarts_opt, :display)
 #@show countarts_opt
-outlatex(countarts_opt, "table/table_choice_short.tex"; format = "%.0f")
+#outlatex(countarts_opt, "table/table_choice_short.tex"; format = "%.0f")
 
 # Merge the frequency tables across optimal policies
 countprofs_opt = outerjoin(countprofs...; on = :profile, makeunique = true)
@@ -76,19 +98,17 @@ insertcols!(lastings_opt, 1, :policy => policynames)
 # Check the share of events used in the stream
 far_ucb = maximum(maximum(maximum.(v)) for v in result_ucb)
 far_linucb = maximum(maximum(maximum.(v)) for v in result_linucb)
-far_limeucb =
-    maximum(maximum(maximum.(getproperty.(v, :selected_events))) for v in result_limeucb)
-far = maximum([far_opt[2], far_random, far_ucb, far_linucb, far_limeucb])
+far_limeucb = maximum(maximum(maximum.(v)) for v in result_limeucb)
+far = maximum([far_random, far_ucb, far_linucb, far_limeucb])
 share = far / nrow(stream_evl) * 100
 println("\n Share of used events at maximum: $(round(share, digits=2))%")
 
-# Check CTR obtained by each algorithm
+# Check CTR obtained by each algorithm first
 algorithmnames = vcat(["Random"],
                        string.("UCB(", learning_rate, ")"),
                        string.("LinUCB(", learning_rate, ")"),
                        string.("LIME(", learning_rate, ")"))
-result_limeucb_event = [getproperty.(v, :selected_events) for v in result_limeucb]
-results = [result_random, result_ucb..., result_linucb..., result_limeucb_event...]
+results = [result_random, result_ucb..., result_linucb..., result_limeucb...]
 
 # CTRs over policies
 avgctr_policies = Array{Any}(undef, length(results))
@@ -112,7 +132,6 @@ for i = 1:length(cumctr_policies)
     )
     plts[i] = plt
 end
-#push!(plts, plt_ctr_opt)
 plt_all = plot(
     plts[Not(1)]...,
     ylabel = "CTR",
@@ -125,20 +144,19 @@ plt_all = plot(
     size = (1200, 800),
 )
 display(plt_all)
-#savefig(plt_all, "figure/plt_ctrs_ucbs.pdf")
-
+#savefig("figure/plt_ctrs_ucbtyped_$(trystep)_$(n_sm).pdf")
 
 # Select the best ones from UCB-typed algorithms for output
-ucbidx = findmax(avgctr_policies[2:5])
+ucbidx = findmax(avgctr_policies[2:4])
 result_ucb_best = result_ucb[ucbidx[2]]
-linucbidx = findmax(avgctr_policies[6:9])
+linucbidx = findmax(avgctr_policies[5:7])
 result_linucb_best = result_linucb[linucbidx[2]]
-limeucbidx = findmax(avgctr_policies[10:13])
-result_limeucb_event_best = result_limeucb_event[limeucbidx[2]]
+limeucbidx = findmax(avgctr_policies[7:9])
+result_limeucb_best = result_limeucb[limeucbidx[2]]
 algorithmnames = ["Random", "UCB($(learning_rate[ucbidx[2]]))",
                             "LinUCB($(learning_rate[linucbidx[2]]))",
                             "LIME($(learning_rate[limeucbidx[2]]))"]
-results = [result_random, result_ucb_best, result_linucb_best, result_limeucb_event_best]
+results = [result_random, result_ucb_best, result_linucb_best, result_limeucb_best]
 
 # CTRs over policies
 avgctr_policies = Array{Any}(undef, length(results))
@@ -210,7 +228,80 @@ plt_all = plot(
     size = (1200, 800),
 )
 display(plt_all)
-#savefig(plt_all, "figure/plt_ctrs.pdf")
+
+
+# Plot mean CTR over multiple histories
+plts = Array{Plots.Plot}(undef, length(cumctr_policies))
+ymaxs = Array{Any}(undef, length(cumctr_policies))
+for i in 1:length(cumctr_policies)
+    df = DataFrame(cumctr_policies[i])
+    x = [mean(r) for r in eachrow(df)]
+    y = [std(r) for r in eachrow(df)]
+    y_up = x .+ y
+    y_bottom = x .- y
+    plts[i] = plot(x, labels = "μ")
+    plot!(y_up, lc = :black, ls = :dash, labels = "μ ± σ")
+    plot!(y_bottom, lc = :black, ls = :dash, labels = nothing)
+    title!("$(algorithmnames[i]) \n μ ± σ (t=$(trystep)) = $(round(x[end],digits=2)) ± $(round(y[end],digits=2))")
+    ymaxs[i] = maximum(y_up)
+end
+push!(plts, plt_ctr_opt)
+ymax = maximum(ymaxs)
+plt_all = plot(
+    plts...,
+    ylabel = "CTR",
+    xlabel = "Trial",
+    ylims = (0, ymax),
+    legend = :topright,
+    titlefontsize = 10,
+    legendfontsize = 8,
+    labelfontsize = 8,
+    size = (1200, 800),
+)
+display(plt_all)
+#savefig("figure/plt_ctrs_$(trystep)_$(n_sm).pdf")
+
+# Box plot
+function get_stepctr(clicks; stepsize = 5000)
+    totalstep = length(clicks)
+    splitidx = range(1, totalstep; step = stepsize) |> Vector
+    push!(splitidx, totalstep+1)
+    stepclicks = [mean(clicks[splitidx[i]:(splitidx[i+1]-1)]) * 100 for i in 1:(length(splitidx)-1)]
+
+    # For plots
+    splitidx[end] = totalstep
+    push!(stepclicks, stepclicks[end])
+
+    return splitidx, stepclicks
+end
+function get_plotstepctr(stepclicks_mc, policyname)
+    vs = [[v[i] for v in stepclicks_mc] for i in 1:length(stepclicks_mc[1])]
+    plt = boxplot(vs, leg=false, color = :lightblue,
+                  title = "$policyname",
+                  titlefontsize = 10,
+                  xlabel = "Interval",
+                  ylabel = "Mean CTR (%)")
+end
+result_opt2 = [result_opt[:history_besthete_lmem], result_opt[:history_homobest]]
+clicks = [stream_evl[selected_events,:click] for selected_events in result_opt2]
+stepclicks = [tp[2] for tp in get_stepctr.(clicks)]
+plt = plot(stepclicks, 
+     lt = :steppost, 
+     labels = permutedims(policynames[[end, begin]]),
+     legend = :topleft,
+     legendfontsize = 8,
+     #title = "Optimal policies CTR per 5000 steps"
+     )
+#savefig("figure/plt_stepctrs_opt_$(trystep)_$(n_sm).pdf")
+plts = Array{Plots.Plot}(undef, length(algorithmnames))
+for i in 1:length(algorithmnames)
+    clicks = [stream_evl[selected_events,:click] for selected_events in results[i]]
+    stepclicks_mc = [tp[2] for tp in get_stepctr.(clicks)]
+    plts[i] = get_plotstepctr(stepclicks_mc, algorithmnames[i])    
+end
+plts_all = plot(plts..., ylims = (0,15))
+#savefig("figure/plt_stepctrs_ucb_$(trystep)_$(n_sm).pdf")
+
 
 # Count choices
 choice_all_alg = outerjoin(choice_policies...; on = :display, makeunique = true)
@@ -220,7 +311,7 @@ choice_latex =
     outerjoin(select(countarts_opt, :display, r"LMEM"), choice_all_alg; on = :display)
 sort!(choice_latex, :display)
 #@show choice_latex
-#outlatex(choice_latex, "table/table_choice.tex"; format = "%.0f")
+#outlatex(choice_latex, "table/table_choice_$(trystep)_$(n_sm).tex"; format = "%.0f")
 
 # Frequency of features
 freq_all = outerjoin(freq_policies...; on = :profile, makeunique = true)
@@ -232,8 +323,8 @@ freq_latex1 = select(freq_latex, :profile, r"num")
 #@show freq_latex1
 freq_latex2 = select(freq_latex, :profile, r"share")
 #@show freq_latex2
-#outlatex(freq_latex1, "table/table_feature1.tex"; format = "%.0f")
-#outlatex(freq_latex2, "table/table_feature2.tex"; format = "%.0f")
+#outlatex(freq_latex1, "table/table_feature1_$(trystep)_$(n_sm).tex"; format = "%.0f")
+#outlatex(freq_latex2, "table/table_feature2_$(trystep)_$(n_sm).tex"; format = "%.0f")
 
 # Calender time
 lasting_all_alg = DataFrame(lasting_policies)
@@ -241,19 +332,107 @@ lasting_all_alg = DataFrame(lasting_policies)
 insertcols!(lasting_all_alg, 1, :policy => algorithmnames)
 lasting_latex = vcat(lastings_opt, lasting_all_alg)
 @show lasting_latex
-#outlatex(lasting_latex, "table/table_time.tex"; format = "%.0f")
+#outlatex(lasting_latex, "table/table_time_$(trystep)_$(n_sm).tex"; format = "%.0f")
 
+# plot mean CTR over MC simulations for UCB and LIME only
+plt = plot(legend = :bottomright, 
+            xlabel = "step", 
+            ylabel = "Mean CTR",
+            title = "$(algorithmnames[4]) and $(algorithmnames[2])'s mean CTRs over $(n_sm) simualtions",
+            titlefontsize = 8)
+df = DataFrame(cumctr_policies[4])
+x = [mean(r) for r in eachrow(df)]
+#y = [std(r) for r in eachrow(df)]
+plot!(x, labels = algorithmnames[4], linecolor = :blue)
+#plot!(x .+ y, labels = nothing, linecolor = :blue, linestyle = :dash)
+#plot!(x .- y, labels = nothing, linecolor = :blue, linestyle = :dash)
+df = DataFrame(cumctr_policies[2])
+x = [mean(r) for r in eachrow(df)]
+#y = [std(r) for r in eachrow(df)]
+plot!(x, labels = algorithmnames[2], linecolor = :red)
+#plot!(x .+ y, labels = nothing, linecolor = :red, linestyle = :dash)
+#plot!(x .- y, labels = nothing, linecolor = :red, linestyle = :dash)
+#plot!(cumctrs[begin], labels = policynames[begin])
+#plot!(cumctrs[end], labels = policynames[end])
+plt2 = plot(cumctrs[[end, begin]], 
+            labels = permutedims(policynames[[end,begin]]),
+            title = "Optimal policies $(policynames[end]) and $(policynames[begin])'s CTRs",
+            titlefontsize = 8)
+plts = plot(plt, plt2, layout = (2,1))
+#savefig("figure/plt_ctr_mc_$(trystep)_$(n_sm).pdf")
+
+# pick one history for ucb and limeucb, respectively
+
+# Find best history of best LIME
+idx = findmax([v[end] for v in cumctr_policies[4]])[2]
+result_limeucb_best_one = result_limeucb_best[idx]
+result_ucb_best_one = result_ucb_best[idx]
+
+x = summary_onehistory(stream_evl,
+                   convert(Vector{Int}, result_limeucb_best_one))
+y = summary_onehistory(stream_evl,
+                    convert(Vector{Int}, result_ucb_best_one))
+
+plt = plot(legend = :bottomright,
+            xlabel = "step",
+            ylabel = "Cum. CTR",
+           title = "The best history of $(algorithmnames[4]) (μ = $(x.avgctr)) \n and one history of $(algorithmnames[2]) with the same random seed (μ = $(y.avgctr))",
+           titlefontsize = 8)
+plot!(x.cumctr, labels = "$(algorithmnames[4])")
+plot!(y.cumctr, labels = "$(algorithmnames[2])")
+#plot!(cumctrs[begin], labels = policynames[begin])
+#plot!(cumctrs[end], labels = policynames[end])
+
+# Check number of new articles at each step
+restream = stream_evl[result_limeucb_best_one, Cols(:date_neg6, r"col")]
+oldart = collect(skipmissing(restream[1,r"col"]))
+newarts = zeros(Int, nrow(restream))
+for i in 1:nrow(restream)
+    artpool = collect(skipmissing(restream[i,r"col"]))
+    in_oldart = artpool .∈ (oldart,)
+    newarts[i] = sum(.!(in_oldart))
+    oldart = union(oldart, artpool)
+end    
+result_limeucb_best_one_newarts = copy(newarts)
+
+restream = stream_evl[result_ucb_best_one, Cols(:date_neg6, r"col")]
+oldart = collect(skipmissing(restream[1,r"col"]))
+newarts = zeros(Int, nrow(restream))
+for i in 1:nrow(restream)
+    artpool = collect(skipmissing(restream[i,r"col"]))
+    in_oldart = artpool .∈ (oldart,)
+    newarts[i] = sum(.!(in_oldart))
+    oldart = union(oldart, artpool)
+end    
+result_ucb_best_one_newarts = copy(newarts)
+
+scat = plot(xlabel = "step",
+            ylabel = "Number of new articles",)
+plot!([result_limeucb_best_one_newarts,
+             result_ucb_best_one_newarts],
+             labels = permutedims(algorithmnames[[4,2]]))
+plot(plt, scat, layout = (2,1))
+savefig("figure/plt_ctr_one_$(trystep)_$(n_sm).pdf")
+# Count choices
+countart = outerjoin(x.countart, y.countart, on = :display, makeunique = true)
+rename!(countart, ["display", "LIME(num)", "LIME(ctr)", "UCB(num)", "UCB(ctr)"])
+#outlatex(countart, "table/table_choice_one_$(trystep)_$(n_sm).tex"; format = "%.0f")
+countprof = outerjoin(x.countprof, y.countprof, on = :profile, makeunique = true)
+rename!(countprof, ["display", "LIME(num)", "LIME(share)", "UCB(num)", "UCB(share)"])
+#outlatex(countprof, "table/table_profile_one_$(trystep)_$(n_sm).tex"; format = "%.0f")
+lasting = DataFrame([x.lasting, y.lasting])
+insertcols!(lasting, 1, :policy => ["LIME", "UCB"])
+#outlatex(lasting, "table/table_time_one_$(trystep)_$(n_sm).tex"; format = "%.0f")
+
+#=
 #--- LIME-UCB Investigation
 
-# Pick one learning rate
-limeucbalpha = learning_rate[limeucbidx[2]]
-result_limeucb_fixa = result_limeucb[limeucbidx[2]]
 # Pick one history
 ctrs_limeucb = [mean(stream_evl[ntp.selected_events, :click]) for ntp in result_limeucb_fixa]
 result_limeucb_one = result_limeucb_fixa[findmax(ctrs_limeucb)[2]]
 println("highest avg ctr: ", findmax(ctrs_limeucb)[1]*100)
 
-plt_ucbs = plot_limeprediction(result_limeucb_one, stream_evl, limeucbalpha)
+#plt_ucbs = plot_limeprediction(result_limeucb_one, stream_evl, limeucbalpha)
 #savefig(plt_ucbs, "figure/plt_ucbs.pdf")
 
 # Check when the best choice entered the pool
@@ -265,3 +444,4 @@ println("click: ", click_ba)
 lasting_ba = @pipe getproperty(df,:date_neg6) |>
                 (n = length(_), lasting = extrema(_))
 println("Number of obs: ", lasting_ba.n, ";\n Duration: ", lasting_ba.lasting)
+=#

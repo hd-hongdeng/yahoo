@@ -7,7 +7,8 @@ Description: Test the performance of LIME-UCB against other algorithms.
 #--- 0. Set up
 
 # Working directory
-#cd("/Users/hongdeng/OneDrive - Erasmus University Rotterdam/work_file_phd/research/project_lime/limeucb_evaluation_2021")
+#cd("/Users/hongdeng/OneDrive - Erasmus University Rotterdam/work_file_phd/research/project_lime/limeucb_evaluation_2021/yahoo")
+pwd()
 
 # Packages
 using DataFrames
@@ -52,4 +53,5 @@ println("\n ######### Set up ends \n")
 include("code_sub/procedure.jl")
 
 #--- Analysis
+# Note: load simulation results first (independent of the main Ppocudure)
 include("code_sub/analysis.jl")

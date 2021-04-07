@@ -32,12 +32,3 @@ Note 1: in case of path problem in Mac,
 export PATH="/Applications/Julia-1.5.app/Contents/Resources/julia/bin:$PATH"
 
 ```
-
-Note 2: to check status of dependences in the Julia package manager, use "status".
-
-Log:
-When I created the environment, the following packages are added:
-
-```
-add DataFrames DataStructures Dates Statistics LinearAlgebra Random JDF Serialization Latexify Pipe Plots StatsPlots GLM RegressionTables MixedModels BenchmarkTools ProgressBars
-```

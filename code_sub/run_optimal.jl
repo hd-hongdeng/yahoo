@@ -1,11 +1,12 @@
 
 # Check the share of events used in the stream
-far_random = maximum(maximum.(result_random))
+far_random = maximum(maximum.(skipmissing.(result_random)))
 share_random = far_random / nrow(stream_evl) * 100
 println("Share of used events for random policy: ", round(share_random, digits = 2), "%")
 
 # Subset data stream for optimal policies
-stream_4opt = @view stream_evl[1:Int(ceil(far_random * 1.05)), :]
+stream_4opt_far = Int(ceil(far_random * 1.05))
+stream_4opt = @view stream_evl[1:stream_4opt_far, :]
 
 # Prepare for optimal policies
 # (i) Homogeneous optimal policy
@@ -105,12 +106,14 @@ end
 println("\n -- Run: Homo. Opt. --")
 issorted(homobest_ctr, [:ctr, :display], rev = true) || error("homobest_ctr is not sorted!") # Make sure the df is sorted by ctr!!!
 history_homobest = simulator_homobest(stream_4opt, trystep, homobest_ctr)
+any(ismissing, history_homobest) && println("The history does not reach desired steps!")
 # (ii) Best-per-profile policy
 println("\n -- Run: BPP --")
 for (k, v) in bpp_ctr
     issorted(v, [:ctr], rev = true) || error("bpp_ctr's profile $k is not sorted!") # Make sure the df is sorted by ctr!!!
 end
 history_bpp = simulator_hetebest(stream_4opt, trystep, bpp_ctr)
+any(ismissing, history_bpp) && println("The history does not reach desired steps!")
 # (iii) Heterogeneous optimal policies with OLS/Logit/LMEM
 println("\n -- Run: Hete-OLS --")
 for (k, v) in hetebest_ols_strategy
@@ -118,18 +121,21 @@ for (k, v) in hetebest_ols_strategy
         error("hetebest_ols_strategy's profile $k is not sorted!") # Make sure the df is sorted by ctr!!!
 end
 history_besthete_ols = simulator_hetebest(stream_4opt, trystep, hetebest_ols_strategy)
+any(ismissing, history_besthete_ols) && println("The history does not reach desired steps!")
 println("\n -- Run: Hete-Logit --")
 for (k, v) in hetebest_logit_strategy
     issorted(v, [:prediction], rev = true) ||
         error("hetebest_logit_strategy's profile $k is not sorted!") # Make sure the df is sorted by ctr!!!
 end
 history_besthete_logit = simulator_hetebest(stream_4opt, trystep, hetebest_logit_strategy)
+any(ismissing, history_besthete_logit) && println("The history does not reach desired steps!")
 println("\n -- Run: Hete-LMEM --")
 for (k, v) in hetebest_lmem_strategy
     issorted(v, [:prediction], rev = true) ||
         error("hetebest_lmem_strategy's profile $k is not sorted!") # Make sure the df is sorted by ctr!!!
 end
 history_besthete_lmem = simulator_hetebest(stream_4opt, trystep, hetebest_lmem_strategy)
+any(ismissing, history_besthete_lmem) && println("The history does not reach desired steps!")
 
 result_opt = (
     history_homobest = history_homobest,
@@ -138,8 +144,9 @@ result_opt = (
     history_besthete_logit = history_besthete_logit,
     history_besthete_lmem = history_besthete_lmem,
 )
+
 # Save simulated histories of optimal policies
-open("result/result_opt_long.bin", "w") do io
+open("result/result_opt_$(trystep)_$(n_sm).bin", "w") do io
     serialize(io, result_opt)
 end
 

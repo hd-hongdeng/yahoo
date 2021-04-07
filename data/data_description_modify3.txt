@@ -1,6 +1,6 @@
 ****************************************************************************************************
 Description of the file "modify3.jdf"
-Updated: 2021-03-29
+Updated: 2021-04-07
 ****************************************************************************************************
 
 1. Data cleaning
@@ -21,7 +21,5 @@ Pairs (u21,u22), (u15,u16), (u13,u14), (u119, u120) are highly correlated;
 In total there are 113 non-const features.
 
 3. Data stream
-"stream_tun.jdf": data before 2011-10-13, Thursday. For estimation on prior parameters.
-"stream_tun2.jdf": data on 2011-10-06 (from 8:00 am). For tuning hyper-parameters.
 "stream_evl.jdf": data on 2011-10-13 (from 8:00 am). For evaluation.
 "stream_evl_long.jdf": data after 2011-10-13 (from 8:00 am). For evaluation.
