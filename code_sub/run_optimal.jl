@@ -139,7 +139,7 @@ result_opt = (
     history_besthete_lmem = history_besthete_lmem,
 )
 # Save simulated histories of optimal policies
-open("result/result_opt.bin", "w") do io
+open("result/result_opt_long.bin", "w") do io
     serialize(io, result_opt)
 end
 

@@ -11,9 +11,9 @@ To-do:
 
 #--- Import data
 
-# Load data stream for evaluation (0.5 seconds).
+# Load data stream for evaluation.
 #stream_evl = loadjdf("data/stream_evl.jdf") # In Atom
-stream_evl = loadjdf("data/stream_evl.jdf") |> DataFrame # In VS code
+stream_evl = loadjdf("data/stream_evl_long.jdf") |> DataFrame # In VS code
 # Extract column names of the user features
 user_features = propertynames(stream_evl)[occursin.(r"u", names(stream_evl))]
 # Compute feature length.
@@ -36,14 +36,14 @@ prior_limeucb = Dict(
 #--- Offline evaluation
 
 # Specify the desired number of steps for the sythetic histories
-trystep = 5000
+trystep = 1000
 # Specify the number of MC simulations
 n_sm = 10
 # Prepare random seeds for multi-threading
 Random.seed!(2021)
 # Save random seeds for multi-threading
 random_seed = rand(1:10^5, n_sm)
-open("result/random_seed.bin", "w") do io
+open("result/random_seed_long.bin", "w") do io
     serialize(io, random_seed)
 end
 
@@ -51,7 +51,7 @@ end
 println("\n -- Run: Random --")
 result_random = simulator_random_mtp(n_sm, stream_evl, trystep, random_seed)
 # Save simulated histories of random policy
-open("result_limeucb/result_random.bin", "w") do io
+open("result/result_random_long.bin", "w") do io
     serialize(io, result_random)
 end
 
@@ -80,7 +80,7 @@ for i = ProgressBar(1:n_α)
         α = α,
     )
 end
-open("result/result_ucb.bin", "w") do io
+open("result/result_ucb_long.bin", "w") do io
     serialize(io, result_ucb)
 end
 
@@ -93,7 +93,7 @@ for i = ProgressBar(1:n_α)
     result_linucb[i] =
         simulator_linucb_mtp(n_sm, stream_evl, trystep, random_seed, p; α = α)
 end
-open("result/result_linucb.bin", "w") do io
+open("result/result_linucb_long.bin", "w") do io
     serialize(io, result_linucb)
 end
 
@@ -113,6 +113,6 @@ for i = ProgressBar(1:n_α)
         update_fe = false,
     )
 end
-open("result/result_limeucb.bin", "w") do io
+open("result/result_limeucb_long.bin", "w") do io
     serialize(io, result_limeucb)
 end

@@ -24,3 +24,4 @@ In total there are 113 non-const features.
 "stream_tun.jdf": data before 2011-10-13, Thursday. For estimation on prior parameters.
 "stream_tun2.jdf": data on 2011-10-06 (from 8:00 am). For tuning hyper-parameters.
 "stream_evl.jdf": data on 2011-10-13 (from 8:00 am). For evaluation.
+"stream_evl_long.jdf": data after 2011-10-13 (from 8:00 am). For evaluation.
