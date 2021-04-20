@@ -1,4 +1,6 @@
-Dependencies:
+Last updated: 2021-04-13
+
+-- Dependencies:
 ```
   [6e4b80f9] BenchmarkTools v0.6.0
   [a93c6f00] DataFrames v0.22.7
@@ -19,16 +21,10 @@ Dependencies:
   [10745b16] Statistics
 ```
 
-There is a project environment that controls the packages. Run the following command in the command line:
+-- Environment.
+There is a project environment that controls the packages. Run the following command in the command line.
 
 ```
 julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
-
-```
-
-Note 1: in case of path problem in Mac,
-
-```
-export PATH="/Applications/Julia-1.5.app/Contents/Resources/julia/bin:$PATH"
 
 ```
