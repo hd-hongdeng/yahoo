@@ -17,7 +17,7 @@ p = length(user_features)
 # Simulation times
 
 # Specify the desired number of steps for the sythetic histories
-trystep = 50_000
+trystep = 30_000
 # Specify the number of MC simulations
 n_sm = 10
 # Prepare random seeds for multi-threading
@@ -29,7 +29,7 @@ open("case_p1/result/random_seed_$(trystep)_$(n_sm)_$p.bin", "w") do io
 end
 
 # Load data stream
-stream_evl = loadjdf("limeucb_evaluation_2021/data/modify3.jdf") |> DataFrame # In VS code, 36 seconds
+stream_evl = loadjdf("../data/modify3.jdf") |> DataFrame # In VS code, 36 seconds
 #propertynames(stream_evl) |> println
 
 # Extra data for evaluation
@@ -50,24 +50,9 @@ prior_ucb = Dict(
 prior_limeucb = Dict(
     "fe_mu0" => result_initial.fe_mu0,
     "fe_var0" => result_initial.fe_var0,
-    "re_var0" => result_initial.re_var0,
+    "re_var0" => result_initial.noise_var0 * Matrix(I, p, p),
     "noise_var0" => result_initial.noise_var0,
 )
-
-# Import estimation results for initializing prior parameters.
-result_initial = open(deserialize, "result/result_initial_1feature.bin")
-# Construct priors
-prior_ucb = Dict(
-    "ucb1estmu0" => result_initial.ucb1estmu0,
-    "ucb1estvar0" => result_initial.ucb1estvar0,
-)
-prior_limeucb = Dict(
-    "fe_mu0" => result_initial.fe_mu0,
-    "fe_var0" => result_initial.fe_var0,
-    "re_var0" => result_initial.re_var0,
-    "noise_var0" => result_initial.noise_var0,
-)
-
 
 # --- Import best learning rate
 result_tunning = open(deserialize, "case_p1/result/result_tunning.bin")

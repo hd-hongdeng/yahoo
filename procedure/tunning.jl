@@ -13,7 +13,7 @@ p = length(user_features)
 # Simulation times
 
 # Specify the desired number of steps for the sythetic histories
-trystep = 50_000
+trystep = 30_000
 # Specify the number of MC simulations
 n_sm = 10
 # Prepare random seeds for multi-threading
@@ -31,7 +31,7 @@ open("case_p1/result/tunning_learning_rate_$(trystep)_$(n_sm)_$p.bin", "w") do i
 end
 
 # Load data stream
-stream_tun2 = loadjdf("limeucb_evaluation_2021/data/modify3.jdf") |> DataFrame # In VS code, 36 seconds
+stream_tun2 = loadjdf("../data/modify3.jdf") |> DataFrame # In VS code, 36 seconds
 #propertynames(stream_tun2) |> println
 
 # Extra data for tunning
@@ -52,7 +52,7 @@ prior_ucb = Dict(
 prior_limeucb = Dict(
     "fe_mu0" => result_initial.fe_mu0,
     "fe_var0" => result_initial.fe_var0,
-    "re_var0" => result_initial.re_var0,
+    "re_var0" => result_initial.noise_var0 * Matrix(I, p, p),
     "noise_var0" => result_initial.noise_var0,
 )
 
@@ -73,6 +73,7 @@ end
 open("case_p1/result/tunning_result_ucb_$(trystep)_$(n_sm)_$p.bin", "w") do io
     serialize(io, result_ucb)
 end
+#result_ucb = open(deserialize, "case_p1/result/tunning_result_ucb_$(trystep)_$(n_sm)_$p.bin")
 
 println("\n -- Run: LinUCB --")
 result_linucb = Array{Any}(undef, n_α)
@@ -88,6 +89,7 @@ end
 open("case_p1/result/tunning_result_linucb_$(trystep)_$(n_sm)_$p.bin", "w") do io
     serialize(io, result_linucb)
 end
+#result_linucb = open(deserialize, "case_p1/result/tunning_result_linucb_$(trystep)_$(n_sm)_$p.bin")
 
 println("\n -- Run: LIME-UCB (Fixed) --")
 result_limeucb = Array{Any}(undef, n_α)

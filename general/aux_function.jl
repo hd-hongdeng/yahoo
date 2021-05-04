@@ -4,7 +4,7 @@ Output an object to Latex
 function outlatex(object, file; format = "%.2f", environment = :tabular)
     s = latexify(object, env = environment, latex = false, fmt = format)
     open(file, "w") do io
-        write(file, s)
+        write(io, s)
     end
 end
 
@@ -20,7 +20,10 @@ end
 """
 Summarize article's infomation: ctr, num. of obs. and duration in hour
 """
-function summary_art(df::Union{DataFrame,SubDataFrame}, groupname::Union{Symbol,String})
+function summary_art(
+    df::Union{DataFrame,SubDataFrame},
+    groupname::Union{Symbol,String},
+)
 
     # Summarize mean click and number of obs.
     stats = @pipe groupby(df, groupname) |>
@@ -70,7 +73,8 @@ function summary_onehistory(
     selected_events::Vector{Int},
 )::NamedTuple
     # Extract selected events from the data stream
-    restream = @view stream[selected_events, [:date_neg6, :profile, :display, :click]]
+    restream =
+        @view stream[selected_events, [:date_neg6, :profile, :display, :click]]
     # Compute CTRs
     avgctr, cumctr = checkreward(restream[!, :click])
     # Count # of times each article being selected and its ctr
@@ -80,8 +84,10 @@ function summary_onehistory(
     # Count the frequency of each profile of feature
     countprof = checkfeature(restream[!, :profile])
     # Extract the actual calender time
-    lasting =
-        (firstevent = restream[begin, :date_neg6], lastevent = restream[end, :date_neg6])
+    lasting = (
+        firstevent = restream[begin, :date_neg6],
+        lastevent = restream[end, :date_neg6],
+    )
 
     return (
         avgctr = avgctr * 100,
@@ -128,7 +134,7 @@ function plot_limeprediction(result_limeucb_one, stream, limeucbalpha)
     # To be improved later...
 
     # Extract the mathched events
-    restream = @view stream[result_limeucb_one.selected_events,:]
+    restream = @view stream[result_limeucb_one.selected_events, :]
 
     # Extract articles shown in the matched events
     restream_art = unique(restream.display)
@@ -147,11 +153,19 @@ function plot_limeprediction(result_limeucb_one, stream, limeucbalpha)
     stds = Array{Any}(undef, nrow(contextseen))
     #A = display_limeucb.display
     for i = 1:nrow(contextseen)
-        actual_ctrs[i] = @pipe filter(:profile => ==(contextseen.profile[i]), restream) |>
-                    groupby(_, :display) |>
-                    combine(_, :click => mean => :ctr)
+        actual_ctrs[i] =
+            @pipe filter(:profile => ==(contextseen.profile[i]), restream) |>
+                  groupby(_, :display) |>
+                  combine(_, :click => mean => :ctr)
         feature_t = collect(contextseen.profile[i])
-        est = ucbs_limeucb(restream_art, display_limeucb, fe_limeucb, feature_t, limeucbalpha).value
+        est =
+            ucbs_limeucb(
+                restream_art,
+                display_limeucb,
+                fe_limeucb,
+                feature_t,
+                limeucbalpha,
+            ).value
         ucbs[i] = getindex.(est, :ucb)
         centers[i] = getindex.(est, :center)
         stds[i] = getindex.(est, :width)
@@ -177,22 +191,32 @@ function plot_limeprediction(result_limeucb_one, stream, limeucbalpha)
     #@show df_stds
 
     # Check order
-    (df_ctrs.display == df_ucbs.display == df_centers.display == df_stds.display) || error("Mismatch in display!")
+    (
+        df_ctrs.display ==
+        df_ucbs.display ==
+        df_centers.display ==
+        df_stds.display
+    ) || error("Mismatch in display!")
 
     # Find the maximum value of y values
     df_4ymax = [df_ctrs, df_ucbs, df_centers, df_stds]
-    ymax = [maximum([maximum(skipmissing(c)) for c in eachcol(df[!,Not(:display)])]) for df in df_4ymax] |> maximum
+    ymax =
+        [
+            maximum([
+                maximum(skipmissing(c)) for c in eachcol(df[!, Not(:display)])
+            ]) for df in df_4ymax
+        ] |> maximum
 
     # Find articles with maximum UCB
-    df_optart = mapcols(c -> df_ucbs.display[findmax(c)[2]], df_ucbs[!,Not(:display)])
+    df_optart =
+        mapcols(c -> df_ucbs.display[findmax(c)[2]], df_ucbs[!, Not(:display)])
 
     # Make plots
     plts = Array{Plots.Plot}(undef, nrow(contextseen))
     for i = 1:nrow(contextseen)
 
         # Plot ctr
-        plts[i] =
-        scatter(
+        plts[i] = scatter(
             df_ctrs[!, i+1],
             ms = 3,
             mc = :darkgreen,
@@ -200,8 +224,11 @@ function plot_limeprediction(result_limeucb_one, stream, limeucbalpha)
             markerstrokewidth = 0,
             leg = false,
             markershape = :diamond,
-            title = string("Case $i: x=", contextseen.profile[i],
-                            ", nr. = $(contextseen.numobs[i]) \n best = $(df_optart[1,i])")
+            title = string(
+                "Case $i: x=",
+                contextseen.profile[i],
+                ", nr. = $(contextseen.numobs[i]) \n best = $(df_optart[1,i])",
+            ),
         )
         # Plot estimated mean by LIME-UCB
         scatter!(
@@ -222,8 +249,8 @@ function plot_limeprediction(result_limeucb_one, stream, limeucbalpha)
             markershape = [:hline],
         )
         # Connect the UCB point and estimated mean by LIME-UCB
-        for k in 1:nrow(df_ucbs)
-            x = [k,k]
+        for k = 1:nrow(df_ucbs)
+            x = [k, k]
             y = [df_ucbs[k, i+1], df_centers[k, i+1]]
             plot!(x, y, lw = 0.65, color = :Gray24)
         end
@@ -244,7 +271,7 @@ function plot_limeprediction(result_limeucb_one, stream, limeucbalpha)
         #layout = (2, 2),
         ylabel = "UCB",
         xlabel = "Article",
-        ylims = (0, ymax+0.01),
+        ylims = (0, ymax + 0.01),
         #legend = :topright,
         titlefontsize = 6,
         #legendfontsize = 6,
@@ -257,158 +284,9 @@ end
 """
 Tentative: Check each history's length
 """
-function check_steps(result::Array{Array{Union{Missing, Int64},1},1})
+function check_steps(result::Array{Array{Union{Missing,Int64},1},1})
     full = @. any(ismissing, result)
     full_all = any(isequal(true), full)
     full_all && println("At least one history does not reach desired steps!")
     #return full_all, full
-end
-
-#--- Functions for the script "update.jl"
-# Beta distribution
-# Update formula
-function update_beta(beta::Beta, r::Real)
-    Beta(beta.α + r, beta.β + (1 - r))
-end
-
-# Compute UCB
-function getucb_beta(beta::Beta; α::Real=1)
-    ucb_center = mean(beta)
-    ucb = quantile(beta, α)
-    ucb_width = ucb - ucb_center
-    return (ucb = ucb, center = ucb_center, width = ucb_width)
-end
-
-# UCB algorithm
-
-# Necessary statistics
-struct UCBStat
-    nchosen::Int
-    estmu::Real
-    prior::NamedTuple{(:estmu0, :noise_var0),Tuple{Real,Real}}
-end
-
-# Update formula
-function update_ucb(stat::UCBStat, reward::Real)
-
-    # Update the # of times for which article has been chosen
-    T = stat.nchosen + 1
-    # Compute the new information
-    Δ = (reward - stat.estmu) / T
-    # Update the estimated mean reward for this article
-    μ̂ = stat.estmu + Δ
-
-    # return stat
-    return UCBStat(T, μ̂, stat.prior)
-end
-
-
-function getucb_ucb(stat::UCBStat; α::Real=1)
-    ucb_center = stat.estmu
-    ucb_width = sqrt(stat.prior.noise_var0 / stat.nchosen)
-    ucb = ucb_center + α * ucb_width
-    return (ucb = ucb, center = ucb_center, width = ucb_width)
-end
-
-# LIME-UCB algorithm
-
-# Necessary statistics
-struct LIMEStatRE
-    nchosen::Int
-    reward::Vector{<:Real}
-    feature::Matrix{<:Real}
-    re_rho::Matrix{<:Real}
-    re_bhat::Vector{<:Real}
-    re_omg::Matrix{<:Real}
-    prior::NamedTuple{(:re_var0, :noise_var0),Tuple{Matrix{<:Real},Real}}
-end
-
-struct LIMEStatFE
-    fe_mu::Vector{<:Real}
-    fe_var::Matrix{<:Real}
-    prior::NamedTuple{(:fe_mu0, :fe_var0, :noise_var0),Tuple{Vector{<:Real},Matrix{<:Real},Real}}
-end
-
-# Update formula
-function update_lime_re(stat_re::LIMEStatRE, reward::Real, feature::Vector{<:Real})
-    T = stat_re.nchosen + 1
-    𝐲 = vcat(stat_re.reward, reward)
-    𝐗 = vcat(stat_re.feature, feature) 
-    σ² = stat_re.prior.noise_var0
-    Ω = stat_re.prior.re_var0
-    Ω̃ = inv((1 / σ²) * 𝐗' * 𝐗 + inv(Ω))
-    𝛒 = Ω̃ * ((1 / σ²) * 𝐗' * 𝐗)
-    b̂ = Ω̃ * ((1 / σ²) * 𝐗' * 𝐲)
-    return LIMEStatRE(T, 𝐲, 𝐗, 𝛒, b̂, Ω̃, stat_re.prior)
-end
-
-# Compute UCB
-function getucb_lime(stat_re::LIMEStatRE, stat_fe::LIMEStatFE, feature::Vector{<:Real}; α::Real=1)
-
-    𝒙 = feature
-    μ̃ᵦ = stat_fe.fe_mu
-    Ω̃ᵦ = stat_fe.fe_var
-    𝛒 = stat_re.re_rho
-    b̂ = stat_re.re_bhat
-    Ω̃ = stat_re.re_omg
-
-    l = 𝒙 - 𝛒' * 𝒙
-    ucb_center = l' * μ̃ᵦ + 𝒙' * b̂
-    ucb_width = sqrt(l' * Ω̃ᵦ * l + 𝒙' * Ω̃ * 𝒙)
-    ucb = ucb_center + α * ucb_width
-    
-    return (ucb = ucb, center = ucb_center, width = ucb_width)
-end            
-
-# Experiment
-
-function experiment(n_step::Int, rewards::Union{Vector{<:Real},BitArray{1}}, stat_beta0::Beta)
-    stat_beta = Array{Beta}(undef, n_step + 1)
-    stat_beta[1] = stat_beta0
-    for i in 1:n_step
-        stat_beta[i + 1] = update_beta(stat_beta[i], rewards[i])
-    end
-    return stat_beta
-end
-
-# How UCB updates given the sequence of rewards
-
-function experiment(n_step::Int, rewards::Union{Vector{<:Real},BitArray{1}}, stat_UCB0::UCBStat)
-    stat_UCB = Array{UCBStat}(undef, n_step + 1)
-    stat_UCB[1] = stat_UCB0
-    for i in 1:n_step
-        stat_UCB[i + 1] = update_ucb(stat_UCB[i], rewards[i])
-    end
-    return stat_UCB
-end
-
-# How LIME updates given the sequence of rewards
-function experiment(n_step::Int, rewards::Union{Vector{<:Real},BitArray{1}}, features::Array{Array{T,1},1} where T <: Real,
-                    stat_LIME_re0::LIMEStatRE)
-    stat_LIME_re = Array{LIMEStatRE}(undef, n_step + 1)
-    stat_LIME_re[1] = stat_LIME_re0
-    for i in 1:n_step
-        stat_LIME_re[i + 1] = update_lime_re(stat_LIME_re[i], rewards[i], features[i])
-    end
-    return stat_LIME_re
-end
-
-# Plot UCBs for one candidate
-function plot_ucb(ucb_collection::Array{NamedTuple{(:ucb, :center, :width), Tuple{Float64, Float64, Float64}},1},
-    α::Real; 
-    linecolor=:red, title="")
-    b = getindex.(ucb_collection, :ucb)
-    c = getindex.(ucb_collection, :center)
-    s = getindex.(ucb_collection, :width)
-    plt = plot(b, 
- lc=linecolor, 
- ls=:dash,
- label="bound",
-  xlabel="step",
-  legend=:bottomright,
-  title=title)
-    plot!(c, yerror=(fill(0, length(s)), α .* s), 
-lc=linecolor, ls=:solid,
-label="center")
-    return plt
 end

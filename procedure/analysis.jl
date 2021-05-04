@@ -15,7 +15,7 @@ p = length(user_features)
 # Simulation times
 
 # Specify the desired number of steps for the sythetic histories
-trystep = 50_000
+trystep = 30_000
 # Specify the number of MC simulations
 n_sm = 10
 
@@ -231,6 +231,7 @@ plt_all = plot(
 )
 #display(plt_all)
 savefig("case_p1/figure/plt_ctrs_$(trystep)_$(n_sm)_$p.pdf")
+
 
 # Box plot
 function get_stepctr(clicks; stepsize = 5000)
