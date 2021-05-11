@@ -1,4 +1,3 @@
-
 #--- Functions for the script "update.jl"
 
 struct OneInstance
@@ -249,14 +248,20 @@ end
 Compute the upper confidence bound for simple UCB algorithm.
 """
 function getucb(stat::StatUCB; α::Float64 = 1.0)
+
     center = stat.estmu
-    width = sqrt(stat.prior.noise_var0 / stat.nchosen)
-    ub = center + α * width
+
+    variance = stat.prior.noise_var0 / stat.nchosen
+
+    width = α * sqrt(variance)
+
+    ub = center + width
+
     return (ub = ub, center = center, width = width)
 end
 
 """
-    getucb(stat_re::StatLIMERe, stat_fe::StatLIMEFe, feature::Vector{Float64}; α::Float64 = 1.0, detail::Bool = false)
+    getucb(stat_re::StatLIMERe, stat_fe::StatLIMEFe, feature::Vector{Float64}; α::Float64 = 1.0)
 
 Compute the upper confidence bound for LIME-UCB algorithm.
 """
@@ -265,7 +270,6 @@ function getucb(
     stat_fe::StatLIMEFe,
     feature::Vector{Float64};
     α::Float64 = 1.0,
-    detail::Bool = false,
 )
 
     # Extract contextual features and necessary statistics
@@ -284,20 +288,230 @@ function getucb(
 
     var_fe = l' * Ω̃ᵦ * l
     var_re = 𝒙' * Ω̃ * 𝒙
-    width = sqrt(var_fe + var_re)
+    variance = var_fe + var_re
 
-    ub = center + α * width
+    width = α * sqrt(variance)
 
-    detail == false ? (ub = ub, center = center, width = width) :
-    (
-        ub = ub,
-        center = center,
-        width = width,
-        center_fe = center_fe,
-        center_re = center_re,
-        var_fe = var_fe,
-        var_re = var_re,
-        adjustedx = l,
+    ub = center + width
+
+    return (ub = ub, center = center, width = width)
+end
+
+"""
+    gen_reward(n::Int, reward_mean::Float64)
+
+Generate a sequance of binary rewards with specified mean value of the reward.
+"""
+function gen_reward(n::Int, reward_mean::Float64)
+    # Create a vector of zeros with length n
+    rewardseq = fill(Float64(0), n)
+    # Pick the indices for reopalcement according to the mean value
+    setone = sample(1:n, Int(round(n * reward_mean)), replace = false)
+    # Fill in ones
+    rewardseq[setone] .= 1
+
+    return rewardseq
+end
+
+"""
+    decompose_lime_stat(stat_fe::StatLIMEFe, stat_re::StatLIMERe)
+
+Compute the contributions made by FE and RE separately in LIME-UCB's bound.
+"""
+function decompose_lime_stat(stat_fe::StatLIMEFe, stat_re::StatLIMERe)
+
+    # Extract basic statistics
+    Ω̃ᵦ = stat_fe.fe_var
+    μ̃ᵦ = stat_fe.fe_mu
+    Ω̃ = stat_re.re_omg
+    𝛒 = stat_re.re_rho
+    b̂ = stat_re.re_bhat
+
+    # Decompose into FE and RE contributions
+    re_contri_center = b̂ - 𝛒 * μ̃ᵦ
+
+    re_contri_variance = Ω̃ + 𝛒 * Ω̃ᵦ * 𝛒'
+
+    corr_in_variance = (-2) * 𝛒 * Ω̃ᵦ
+
+    re_contri_variance_total = re_contri_variance + corr_in_variance
+
+
+    return (
+        fe_contri_center = μ̃ᵦ,
+        re_contri_center = re_contri_center,
+        fe_contri_variance = Ω̃ᵦ,
+        re_contri_variance = re_contri_variance,
+        corr_in_variance = corr_in_variance,
+        re_contri_variance_total = re_contri_variance_total,
+    )
+end
+
+"""
+
+Plot upper bounds, centers and widths for all steps.
+"""
+function plotindex(
+    collection::Array{
+        NamedTuple{(:ub, :center, :width),Tuple{Float64,Float64,Float64}},
+        1,
+    };
+    linecolor = :Green,
+)
+
+    # Extract upper bounds, centers and widths for every step
+    b = getproperty.(collection, :ub)
+    c = getproperty.(collection, :center)
+    s = getproperty.(collection, :width)
+    T = length(b)
+
+    # Plot upper bounds
+    plt = plot(
+        0:1:T-1,
+        b,
+        lw = 1.5,
+        lc = linecolor,
+        ls = :dash,
+        #label = "Bound",
+        leg = false,
+        xlabel = "Step",
+        title = "UCB (Final Bound = $(round(b[end], digits = 2)), Center = $(round(c[end], digits = 2)), Width = $(round(s[end], digits = 2))) "
+    )
+
+    # Plot centers and widths
+    plot!(
+        0:1:T-1,
+        c,
+        yerror = (fill(0, T), s),
+        lw = 1.5,
+        lc = linecolor,
+        ls = :solid,
+        #label = "Center",
+    )
+
+    return plt
+end
+
+function slider_lime(reward_mean, n, p, fe_mu0, fe_var0, re_var0, noise_var0, α; seed = 11223344)
+
+    # Data
+    # Set seed!
+    Random.seed!(seed)
+    rewardseq = gen_reward(n, reward_mean)
+    datastream = [OneInstance(r, [1]) for r in rewardseq]
+
+    # Piror
+    stat_fe0 = StatLIMEFe(
+        fe_var0, # fe_var
+        fill(0, p), # fe_mu
+        (fe_var0 = fe_var0, fe_mu0 = fe_mu0, noise_var0 = noise_var0),
+    )
+    stat_re0 = StatLIMERe(
+        0, # nchosen
+        zeros(0, p), # feature/design matrix
+        Bool[], # reward
+        re_var0, # re_omg
+        zeros(p, p), # re_rho
+        zeros(p), # re_bhat
+        zeros(p, p), # C_var
+        zeros(p), # C_mu
+        (re_var0 = re_var0, noise_var0 = noise_var0),
+    )
+
+    # Update LIME-UCB's parameters
+    stats_lime_re, stats_lime_fe = onearm(datastream, stat_re0, stat_fe0)
+
+    # Compute uppper bounds, centers, and widths for each step
+    datastream_add0 = vcat(OneInstance(0, fill(0, p)), datastream)
+    inds_lime = [
+        getucb(
+            stats_lime_re[i],
+            stats_lime_fe[i],
+            datastream_add0[i].feature,
+            α = α,
+        ) for i = 1:(n+1)
+    ]
+
+    # Decompose LIME-UCB's parameters for each step
+    decomp_lime = [
+        decompose_lime_stat(stats_lime_fe[i], stats_lime_re[i]) for
+        i = 1:(n+1)
+    ]
+
+    # Specify steps from 0
+    xs = range(0, n, step = 1)
+
+    # Plot the dynamics
+    plt1 = plot(
+        xs,
+        getindex.(getproperty.(decomp_lime, :fe_contri_center), 1),
+        xlabel = "Step",
+        ylabel = L"\tilde{\mu}_{\beta}^\star",
+        lc = :Blue,
+        title = "FE's impact on the center",
+        leg = false,
+    )
+    plt2 = plot(
+        xs,
+        getindex.(getproperty.(decomp_lime, :re_contri_center), 1),
+        xlabel = "Step",
+        ylabel = L"\hat{b}_{i}-{\rho}_{i}\tilde{\mu}_{\beta}^\star",
+        lc = :Red,
+        title = "RE's impact on the center",
+        leg = false,
+    )
+    plt3 = plot(
+        xs,
+        getindex.(getproperty.(decomp_lime, :fe_contri_variance), 1),
+        xlabel = "Step",
+        ylabel = L"\tilde{\Omega}_{\beta}^\star",
+        lc = :Blue,
+        title = "FE's impact on the variance",
+        leg = false,
+    )
+    plt4 = plot(
+        xs,
+        getindex.(getproperty.(decomp_lime, :re_contri_variance_total), 1),
+        xlabel = "Step",
+        ylabel = L"\tilde{\Omega}_{b_i} + \rho_i \tilde{\Omega}_{\beta}^\star \rho_i^\prime - 2 \rho_i \tilde{\Omega}_{\beta}^\star ",
+        lc = :Red,
+        title = "RE's impact on the variance",
+        leg = false,
+    )
+    plt5 = plotindex(inds_lime)
+    plt6 = plot(
+        xs,
+        getproperty.(inds_lime, :center),
+        xlabel = "Step",
+        lc = :Green,
+        title = "Center",
+        leg = false,
+    )
+    plt7 = plot(
+        xs,
+        getproperty.(inds_lime, :width),
+        xlabel = "Step",
+        lc = :Black,
+        title = "Width",
+        leg = false,
+    )
+
+    plot(
+        plt5,
+        plt1,
+        plt2,
+        plt6,
+        plt3,
+        plt4,
+        plt7,
+        thickness_scaling = 1.2,
+        guidefontsize = 8,
+        legendfontsize = 8,
+        tickfontsize = 8,
+        titlefontsize = 9,
+        size = (1200, 800),
+        layout = @layout [ a{0.3h}
+                           grid(2,3){0.7h} ]
     )
 end
 
@@ -366,20 +580,20 @@ function test_lime(
     p;
     α = 1.0,
     stat_fe0 = StatLIMEFe(
-        Matrix(I, p, p), # fe_var
-        zeros(p), # fe_mu
-        (fe_var0 = Matrix(I, p, p), fe_mu0 = zeros(p), noise_var0 = 1),
+        1 * Matrix(I, p, p), # fe_var
+        fill(0, p), # fe_mu
+        (fe_var0 = 1 * Matrix(I, p, p), fe_mu0 = fill(0, p), noise_var0 = 1),
     ),
     stat_re0 = StatLIMERe(
         0, # nchosen
         zeros(0, p), # feature/design matrix
         Bool[], # reward
-        Matrix(I, p, p), # re_omg
+        1 * Matrix(I, p, p), # re_omg
         zeros(p, p), # re_rho
         zeros(p), # re_bhat
         zeros(p, p), # C_var
         zeros(p), # C_mu
-        (re_var0 = Matrix(I, p, p), noise_var0 = 1),
+        (re_var0 = 1 * Matrix(I, p, p), noise_var0 = 1),
     ),
 )
     # Update for one-armed bandit problem
@@ -396,35 +610,4 @@ function test_lime(
     ]
 
     return (stats = (re = stats_lime_re, fe = stats_lime_fe), inds = inds_lime)
-end
-
-
-# Plot upper bounds, centers and widths for one candidate (Beta/UCB/LIMEUCB)
-function plotindex(collection; α = 1.0, linecolor = :red, title = "")
-
-    # Extract upper bounds, centers and widths for every step
-    b = getindex.(collection, :ub)
-    c = getindex.(collection, :center)
-    s = getindex.(collection, :width)
-    # Plot upper bounds
-    plt = plot(
-        0:1:length(b)-1,
-        b,
-        lc = linecolor,
-        ls = :dash,
-        label = "Bound",
-        xlabel = "Step",
-        legend = :bottomright,
-        title = title,
-    )
-    # Plot centers and widths (scaled by α)
-    plot!(
-        0:1:length(c)-1,
-        c,
-        yerror = (fill(0, length(s)), α .* s),
-        lc = linecolor,
-        ls = :solid,
-        label = "Center",
-    )
-    return plt
 end
