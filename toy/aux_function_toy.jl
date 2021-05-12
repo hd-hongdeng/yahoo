@@ -1,4 +1,4 @@
-#--- Functions for the script "update.jl"
+#--- Functions for the script "toy.jl"
 
 struct OneInstance
     reward::Float64
@@ -76,7 +76,7 @@ function update(
     T = stat_re.nchosen + 1
 
     # Stack the new instance to the design matrix and reward vector
-    𝐗 = vcat(stat_re.feature, data.feature)
+    𝐗 = vcat(stat_re.feature, data.feature')
     𝐲 = vcat(stat_re.reward, data.reward)
 
     # Extract priors on noise variance and RE variance
@@ -355,8 +355,7 @@ function plotindex(
     collection::Array{
         NamedTuple{(:ub, :center, :width),Tuple{Float64,Float64,Float64}},
         1,
-    };
-    linecolor = :Green,
+    },
 )
 
     # Extract upper bounds, centers and widths for every step
@@ -369,13 +368,13 @@ function plotindex(
     plt = plot(
         0:1:T-1,
         b,
-        lw = 1.5,
-        lc = linecolor,
-        ls = :dash,
-        #label = "Bound",
-        leg = false,
+        lw = 2,
+        lc = :orange,
+        ls = :solid,
+        label = "Bound",
+        leg = :outertopright,
         xlabel = "Step",
-        title = "UCB (Final Bound = $(round(b[end], digits = 2)), Center = $(round(c[end], digits = 2)), Width = $(round(s[end], digits = 2))) "
+        title = "UCB (Final Bound = $(round(b[end], digits = 2)), Center = $(round(c[end], digits = 2)), Width = $(round(s[end], digits = 2))) ",
     )
 
     # Plot centers and widths
@@ -384,15 +383,25 @@ function plotindex(
         c,
         yerror = (fill(0, T), s),
         lw = 1.5,
-        lc = linecolor,
+        lc = :green,
         ls = :solid,
-        #label = "Center",
+        label = "Center",
     )
 
     return plt
 end
 
-function slider_lime(reward_mean, n, p, fe_mu0, fe_var0, re_var0, noise_var0, α; seed = 11223344)
+function slider_lime(
+    reward_mean,
+    n,
+    p,
+    fe_mu0,
+    fe_var0,
+    re_var0,
+    noise_var0,
+    α;
+    seed = 11223344,
+)
 
     # Data
     # Set seed!
@@ -409,7 +418,7 @@ function slider_lime(reward_mean, n, p, fe_mu0, fe_var0, re_var0, noise_var0, α
     stat_re0 = StatLIMERe(
         0, # nchosen
         zeros(0, p), # feature/design matrix
-        Bool[], # reward
+        Float64[], # reward
         re_var0, # re_omg
         zeros(p, p), # re_rho
         zeros(p), # re_bhat
@@ -434,8 +443,44 @@ function slider_lime(reward_mean, n, p, fe_mu0, fe_var0, re_var0, noise_var0, α
 
     # Decompose LIME-UCB's parameters for each step
     decomp_lime = [
-        decompose_lime_stat(stats_lime_fe[i], stats_lime_re[i]) for
-        i = 1:(n+1)
+        decompose_lime_stat(stats_lime_fe[i], stats_lime_re[i]) for i = 1:(n+1)
+    ]
+
+    # What would happen if we use offline calibration
+    stats_lime_re_base, stats_lime_fe_base = onearm(
+        datastream,
+        StatLIMERe(
+            0, # nchosen
+            zeros(0, p), # feature/design matrix
+            Float64[], # reward
+            4e-4 * Matrix(I, p, p), # re_omg
+            zeros(p, p), # re_rho
+            zeros(p), # re_bhat
+            zeros(p, p), # C_var
+            zeros(p), # C_mu
+            (re_var0 = 4e-4 * Matrix(I, p, p), noise_var0 = 0.04),
+        ),
+        StatLIMEFe(
+            1e-6 * Matrix(I, p, p), # fe_var
+            fill(0.04, p), # fe_mu
+            (
+                fe_var0 = 1e-6 * Matrix(I, p, p),
+                fe_mu0 = fill(0.04, p),
+                noise_var0 = 0.04,
+            ),
+        ),
+    )
+    inds_lime_base = [
+        getucb(
+            stats_lime_re_base[i],
+            stats_lime_fe_base[i],
+            datastream_add0[i].feature,
+            α = α,
+        ) for i = 1:(n+1)
+    ]
+    decomp_lime_base = [
+        decompose_lime_stat(stats_lime_fe_base[i], stats_lime_re_base[i])
+        for i = 1:(n+1)
     ]
 
     # Specify steps from 0
@@ -443,6 +488,11 @@ function slider_lime(reward_mean, n, p, fe_mu0, fe_var0, re_var0, noise_var0, α
 
     # Plot the dynamics
     plt1 = plot(
+        xs,
+        getindex.(getproperty.(decomp_lime_base, :fe_contri_center), 1),
+        lc = :Gray,
+    )
+    plot!(
         xs,
         getindex.(getproperty.(decomp_lime, :fe_contri_center), 1),
         xlabel = "Step",
@@ -453,6 +503,11 @@ function slider_lime(reward_mean, n, p, fe_mu0, fe_var0, re_var0, noise_var0, α
     )
     plt2 = plot(
         xs,
+        getindex.(getproperty.(decomp_lime_base, :re_contri_center), 1),
+        lc = :Gray,
+    )
+    plot!(
+        xs,
         getindex.(getproperty.(decomp_lime, :re_contri_center), 1),
         xlabel = "Step",
         ylabel = L"\hat{b}_{i}-{\rho}_{i}\tilde{\mu}_{\beta}^\star",
@@ -461,6 +516,11 @@ function slider_lime(reward_mean, n, p, fe_mu0, fe_var0, re_var0, noise_var0, α
         leg = false,
     )
     plt3 = plot(
+        xs,
+        getindex.(getproperty.(decomp_lime_base, :fe_contri_variance), 1),
+        lc = :Gray,
+    )
+    plot!(
         xs,
         getindex.(getproperty.(decomp_lime, :fe_contri_variance), 1),
         xlabel = "Step",
@@ -471,6 +531,11 @@ function slider_lime(reward_mean, n, p, fe_mu0, fe_var0, re_var0, noise_var0, α
     )
     plt4 = plot(
         xs,
+        getindex.(getproperty.(decomp_lime_base, :re_contri_variance_total), 1),
+        lc = :Gray,
+    )
+    plot!(
+        xs,
         getindex.(getproperty.(decomp_lime, :re_contri_variance_total), 1),
         xlabel = "Step",
         ylabel = L"\tilde{\Omega}_{b_i} + \rho_i \tilde{\Omega}_{\beta}^\star \rho_i^\prime - 2 \rho_i \tilde{\Omega}_{\beta}^\star ",
@@ -479,7 +544,15 @@ function slider_lime(reward_mean, n, p, fe_mu0, fe_var0, re_var0, noise_var0, α
         leg = false,
     )
     plt5 = plotindex(inds_lime)
-    plt6 = plot(
+    hline!(
+        [reward_mean],
+        lc = :green,
+        ls = :dash,
+        label = "r̄ ($(reward_mean))",
+    )
+
+    plt6 = plot(xs, getproperty.(inds_lime_base, :center), lc = :Gray)
+    plot!(
         xs,
         getproperty.(inds_lime, :center),
         xlabel = "Step",
@@ -487,7 +560,9 @@ function slider_lime(reward_mean, n, p, fe_mu0, fe_var0, re_var0, noise_var0, α
         title = "Center",
         leg = false,
     )
-    plt7 = plot(
+    hline!([reward_mean], lc = :green, ls = :dash)
+    plt7 = plot(xs, getproperty.(inds_lime_base, :width), lc = :Gray)
+    plot!(
         xs,
         getproperty.(inds_lime, :width),
         xlabel = "Step",
@@ -495,7 +570,6 @@ function slider_lime(reward_mean, n, p, fe_mu0, fe_var0, re_var0, noise_var0, α
         title = "Width",
         leg = false,
     )
-
     plot(
         plt5,
         plt1,
@@ -515,6 +589,133 @@ function slider_lime(reward_mean, n, p, fe_mu0, fe_var0, re_var0, noise_var0, α
     )
 end
 
+function slider_profile(
+    β,
+    n,
+    p,
+    fe_mu0,
+    fe_var0,
+    re_var0,
+    noise_var0,
+    α;
+    seed = 112233,
+)
+    # Data
+    rng = MersenneTwister(seed)
+    d = Normal(0, sqrt(0.1))
+    noise = rand(rng, d, n)
+    pf1 = [1, 0]
+    pf2 = [1, 1]
+    r̄1 = β' * pf1
+    r̄2 = β' * pf2
+    rewardseq1 = r̄1 .+ noise
+    rewardseq2 = r̄2 .+ noise
+    datastream1 = [OneInstance(r, pf1) for r in rewardseq1]
+    datastream2 = [OneInstance(r, pf2) for r in rewardseq2]
+
+    # Learning profile 1
+    stats_lime_re_learn, stats_lime_fe_learn = onearm(
+        datastream1,
+        StatLIMERe(
+            0, # nchosen
+            zeros(0, p), # feature/design matrix
+            Float64[], # reward
+            re_var0, # re_omg
+            zeros(p, p), # re_rho
+            zeros(p), # re_bhat
+            zeros(p, p), # C_var
+            zeros(p), # C_mu
+            (re_var0 = re_var0, noise_var0 = noise_var0),
+        ),
+        StatLIMEFe(
+            fe_var0, # fe_var
+            fe_mu0, # fe_mu
+            (fe_var0 = fe_var0, fe_mu0 = fe_mu0, noise_var0 = noise_var0),
+        ),
+    )
+    # Compute UCBs
+    datastream_add0 = vcat(OneInstance(0, fill(0, p)), datastream1)
+    inds_lime_learn1 = [
+        getucb(
+            stats_lime_re_learn[i],
+            stats_lime_fe_learn[i],
+            datastream_add0[i].feature,
+            α = α,
+        ) for i = 1:(n+1)
+    ]
+    datastream_add0 = vcat(OneInstance(0, fill(0, p)), datastream2)
+    inds_lime_infer2 = [
+        getucb(
+            stats_lime_re_learn[i],
+            stats_lime_fe_learn[i],
+            datastream_add0[i].feature,
+            α = α,
+        ) for i = 1:(n+1)
+    ]
+
+    # Learning profile 2
+    stats_lime_re_learn, stats_lime_fe_learn = onearm(
+        datastream2,
+        StatLIMERe(
+            0, # nchosen
+            zeros(0, p), # feature/design matrix
+            Float64[], # reward
+            re_var0, # re_omg
+            zeros(p, p), # re_rho
+            zeros(p), # re_bhat
+            zeros(p, p), # C_var
+            zeros(p), # C_mu
+            (re_var0 = re_var0, noise_var0 = noise_var0),
+        ),
+        StatLIMEFe(
+            fe_var0, # fe_var
+            fe_mu0, # fe_mu
+            (fe_var0 = fe_var0, fe_mu0 = fe_mu0, noise_var0 = noise_var0),
+        ),
+    )
+
+    # Compute UCBs
+    datastream_add0 = vcat(OneInstance(0, fill(0, p)), datastream2)
+    inds_lime_learn2 = [
+        getucb(
+            stats_lime_re_learn[i],
+            stats_lime_fe_learn[i],
+            datastream_add0[i].feature,
+            α = α,
+        ) for i = 1:(n+1)
+    ]
+    datastream_add0 = vcat(OneInstance(0, fill(0, p)), datastream1)
+    inds_lime_infer1 = [
+        getucb(
+            stats_lime_re_learn[i],
+            stats_lime_fe_learn[i],
+            datastream_add0[i].feature,
+            α = α,
+        ) for i = 1:(n+1)
+    ]
+
+    # Plot
+    inds =
+        [inds_lime_learn1, inds_lime_infer2, inds_lime_infer1, inds_lime_learn2]
+
+    ylim_up = maximum([maximum([maximum(getproperty.(coll, :ub)) for coll in inds]), r̄1, r̄2])
+    ylim_dw = minimum([minimum([minimum(getproperty.(coll, :center)) for coll in inds]), r̄1, r̄2])
+    plts = [plotindex(coll) for coll in inds]
+    plot(
+        plts...,
+        leg = false,
+        ylabel = "UCB",
+        title = ["Learning x = $(pf1)" "Infering x = $(pf2)" "Infering x = $(pf1)" "Learning x = $(pf2)"],
+        ylims = (ylim_dw, ylim_up),
+        #xticks = 0:1:n,
+        guidefontsize = 8,
+        legendfontsize = 8,
+        tickfontsize = 8,
+        titlefontsize = 8,
+        size = (1200,800)
+    )
+    hline!([r̄1 r̄2 r̄1 r̄2], lc = :green, ls = :dash)
+end
 
 function test_beta(datastream; q = 0.95, stat_beta0 = Beta(1, 1))
 
@@ -555,7 +756,7 @@ function test_lime_fixed(
     stat_re0 = StatLIMERe(
         0, # nchosen
         zeros(0, p), # feature/design matrix
-        Bool[], # reward
+        Float64[], # reward
         Matrix(I, p, p), # re_omg
         zeros(p, p), # re_rho
         zeros(p), # re_bhat
@@ -587,7 +788,7 @@ function test_lime(
     stat_re0 = StatLIMERe(
         0, # nchosen
         zeros(0, p), # feature/design matrix
-        Bool[], # reward
+        Float64[], # reward
         1 * Matrix(I, p, p), # re_omg
         zeros(p, p), # re_rho
         zeros(p), # re_bhat
