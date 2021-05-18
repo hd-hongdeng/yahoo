@@ -600,16 +600,21 @@ function slider_profile(
     α;
     seed = 112233,
 )
-    # Data
+    # Random seed
     rng = MersenneTwister(seed)
-    d = Normal(0, sqrt(0.1))
+    # Error
+    d = Normal(0, sqrt(0.01))
     noise = rand(rng, d, n)
+    # Profile
     pf1 = [1, 0]
     pf2 = [1, 1]
+    # Mean reward
     r̄1 = β' * pf1
     r̄2 = β' * pf2
+    # Reward sequance
     rewardseq1 = r̄1 .+ noise
     rewardseq2 = r̄2 .+ noise
+    # Data stream
     datastream1 = [OneInstance(r, pf1) for r in rewardseq1]
     datastream2 = [OneInstance(r, pf2) for r in rewardseq2]
 
@@ -634,21 +639,21 @@ function slider_profile(
         ),
     )
     # Compute UCBs
-    datastream_add0 = vcat(OneInstance(0, fill(0, p)), datastream1)
+    datastream1_add0 = vcat(OneInstance(0, fill(0, p)), datastream1)
     inds_lime_learn1 = [
         getucb(
             stats_lime_re_learn[i],
             stats_lime_fe_learn[i],
-            datastream_add0[i].feature,
+            datastream1_add0[i].feature,
             α = α,
         ) for i = 1:(n+1)
     ]
-    datastream_add0 = vcat(OneInstance(0, fill(0, p)), datastream2)
+    datastream2_add0 = vcat(OneInstance(0, fill(0, p)), datastream2)
     inds_lime_infer2 = [
         getucb(
             stats_lime_re_learn[i],
             stats_lime_fe_learn[i],
-            datastream_add0[i].feature,
+            datastream2_add0[i].feature,
             α = α,
         ) for i = 1:(n+1)
     ]
@@ -675,21 +680,19 @@ function slider_profile(
     )
 
     # Compute UCBs
-    datastream_add0 = vcat(OneInstance(0, fill(0, p)), datastream2)
     inds_lime_learn2 = [
         getucb(
             stats_lime_re_learn[i],
             stats_lime_fe_learn[i],
-            datastream_add0[i].feature,
+            datastream2_add0[i].feature,
             α = α,
         ) for i = 1:(n+1)
     ]
-    datastream_add0 = vcat(OneInstance(0, fill(0, p)), datastream1)
     inds_lime_infer1 = [
         getucb(
             stats_lime_re_learn[i],
             stats_lime_fe_learn[i],
-            datastream_add0[i].feature,
+            datastream1_add0[i].feature,
             α = α,
         ) for i = 1:(n+1)
     ]
@@ -698,8 +701,16 @@ function slider_profile(
     inds =
         [inds_lime_learn1, inds_lime_infer2, inds_lime_infer1, inds_lime_learn2]
 
-    ylim_up = maximum([maximum([maximum(getproperty.(coll, :ub)) for coll in inds]), r̄1, r̄2])
-    ylim_dw = minimum([minimum([minimum(getproperty.(coll, :center)) for coll in inds]), r̄1, r̄2])
+    ylim_up = maximum([
+        maximum([maximum(getproperty.(coll, :ub)) for coll in inds]),
+        r̄1,
+        r̄2,
+    ])
+    ylim_dw = minimum([
+        minimum([minimum(getproperty.(coll, :center)) for coll in inds]),
+        r̄1,
+        r̄2,
+    ])
     plts = [plotindex(coll) for coll in inds]
     plot(
         plts...,
@@ -712,7 +723,7 @@ function slider_profile(
         legendfontsize = 8,
         tickfontsize = 8,
         titlefontsize = 8,
-        size = (1200,800)
+        size = (1200, 800),
     )
     hline!([r̄1 r̄2 r̄1 r̄2], lc = :green, ls = :dash)
 end

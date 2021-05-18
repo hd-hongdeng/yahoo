@@ -20,8 +20,8 @@ include("./aux_function_toy.jl")
 
 #--- Examine LIME-UCB's dynamics: contextual-free environment
 
-n = 100
-p = 1
+# n = 100
+# p = 1
 # α = 1.0
 # reward_mean = 0.04
 # fe_mu0 = fill(0, p)
@@ -31,48 +31,42 @@ p = 1
 # slider_lime(reward_mean, n, p, fe_mu0, fe_var0, re_var0, noise_var0, α)
 
 begin
-    v = [0.001, 0.01, 0.1, 1, 10]
 
-    range_fe_var00 = [i * Matrix(I, p, p) for i in vcat(v, 1e-6)]
-    range_fe_var0 = OrderedDict(
-        zip(["0.001", "0.01", "0.1", "1", "10", "Est: 1e-6"], range_fe_var00),
-    )
+    p = 1
 
-    range_re_var00 = [i * Matrix(I, p, p) for i in vcat(v, 4e-4)]
-    range_re_var0 = OrderedDict(
-        zip(["0.001", "0.01", "0.1", "1", "10", "Est: 4e-4"], range_re_var00),
-    )
+    v = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 1e+1, 1e+2]
 
-    range_noise_var0 = OrderedDict(
-        zip(["0.001", "0.01", "0.1", "1", "10", "Est: 4e-2"], vcat(v, 0.04)),
-    )
+    range_fe_var0 = [i * Matrix(I, p, p) for i in v]
 
-    range_α = OrderedDict(zip(["0.1", "1", "2", "Est: 3"], [0.1, 1.0, 2.0, 3.0]))
+    range_re_var0 = [i * Matrix(I, p, p) for i in vcat(v, 4e-4)]
 
-    test = @manipulate for r̄ in slider(0.0:0.01:1, value = 0.04, label = "r̄"),
+    range_α =
+        OrderedDict(zip(["0.1", "1", "2", "Est: 3"], [0.1, 1.0, 2.0, 3.0]))
+
+    test = @manipulate for T in slider(100:100:1000, value = 100, label = "T"),
+        σ² in slider(0.01:0.01:1, value = 0.04, label = "σ²"),
+        r̄ in slider(0.0:0.01:1, value = 0.04, label = "r̄"),
         μ in slider(0.0:0.01:1, value = 0.04, label = "μᵦ"),
-        σ²ᵦ in togglebuttons(
+        σ²ᵦ in dropdown(
             range_fe_var0,
             value = 1e-6 * Matrix(I, p, p),
             label = "Ωᵦ",
         ),
-        σ²ᵢ in togglebuttons(
+        σ²ᵢ in dropdown(
             range_re_var0,
             value = 4e-4 * Matrix(I, p, p),
             label = "Ωᵢ",
         ),
-        σ² in togglebuttons(range_noise_var0, value = 0.04, label = "σ²"),
-        α in togglebuttons(range_α, value = 3.0, label = "α")
+        α in dropdown(range_α, value = 3.0, label = "α")
 
-        slider_lime(r̄, n, p, fill(μ, p), σ²ᵦ, σ²ᵢ, σ², α)
+        slider_lime(r̄, T, p, fill(μ, p), σ²ᵦ, σ²ᵢ, σ², α)
     end
 
 
     @layout! test vbox(
-        #hbox(pad(1em, :r̄), pad(1em, :μ)),
         :r̄,
         :μ,
-        hbox(pad(1em, :σ²ᵦ), pad(1em, :σ²ᵢ), pad(1em, :σ²), pad(1em, :α)),
+        hbox(pad(1em, :σ²ᵦ), pad(1em, :σ²ᵢ), pad(1em, :σ²), pad(1em, :T), pad(1em, :α)),
         vskip(2em),
         observe(_),
     )
@@ -84,8 +78,8 @@ end
 #--- Examine LIME-UCB's dynamics: intercept + one binary feature
 
 # Set-up
-n = 100
-p = 2
+# n = 100
+# p = 2
 # Prior
 # α = 1.0
 # fe_mu0 = fill(0, p)
@@ -96,41 +90,67 @@ p = 2
 # slider_profile(β, n, p, fe_mu0, fe_var0, re_var0, noise_var0, α; seed = 112233)
 
 begin
-    range_noise_var0 = OrderedDict(
-        zip(["0.01", "0.1", "1", "10", "Est: 4e-2"], vcat(v, 0.04)),
-    )
+    p = 2
 
-    range_α = OrderedDict(zip(["0.1", "1", "2", "Est: 3"], [0.1, 1.0, 2.0, 3.0]))
+    v = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 1e+1, 1e+2]
 
-    test = @manipulate for β₀ in slider(-1:0.01:1, value = 0.02, label = "β₀"),
+    range_α =
+        OrderedDict(zip(["0.1", "1", "2", "Est: 3"], [0.1, 1.0, 2.0, 3.0]))
+
+    test = @manipulate for T in slider(100:100:1000, value = 100, label = "T"),
+        σ² in slider(0.01:0.01:1, value = 0.04, label = "σ²"),
+        β₀ in slider(-1:0.01:1, value = 0.02, label = "β₀"),
         β₁ in slider(-1:0.01:1, value = 0.03, label = "β₁"),
         μ₀ in slider(-1:0.01:1, value = 0.02, label = "μ₀"),
         μ₁ in slider(-1:0.01:1, value = 0.03, label = "μ₁"),
-        σ²₀ in dropdown([1e-6, 0.01, 0.1, 1, 10], value = 1e-6, label = "σ²₀"),
-        σ²₁ in dropdown([1e-6, 0.01, 0.1, 1, 10], value = 1e-6, label = "σ²₁"),
-        cᵦ in dropdown([-0.5, -0.1, 0.0, 0.1, 0.5], value = 0.0, label = "cᵦ"),
-        s²₀ in dropdown([0.000177, 0.01, 0.1, 1, 10], value = 0.000177, label = "s²₀"),
-        s²₁ in dropdown([0.000330, 0.01, 0.1, 1, 10], value = 0.000330, label = "s²₁"),
-        cᵢ in dropdown([0.000154, -0.5, -0.1, 0.0, 0.1, 0.5], value = 0.000154, label = "cᵢ"),
-        σ² in togglebuttons(range_noise_var0, value = 0.04, label = "σ²"),
-        α in togglebuttons(range_α, value = 3.0, label = "α")
+        σ²₀ in dropdown(v, value = 1e-6, label = "σ²₀"),
+        σ²₁ in dropdown(v, value = 1e-6, label = "σ²₁"),
+        ρᵦ in dropdown([-0.5, -0.1, 0.0, 0.1, 0.5], value = 0.0, label = "ρᵦ"),
+        s²₀ in dropdown(
+            vcat(0.000177, v),
+            value = 0.000177,
+            label = "s²₀",
+        ),
+        s²₁ in dropdown(
+            vcat(0.000330, v),
+            value = 0.000330,
+            label = "s²₁",
+        ),
+        ρᵢ in dropdown(
+            [0.000154, -0.5, -0.1, 0.0, 0.1, 0.5],
+            value = 0.000154,
+            label = "ρᵢ",
+        ),
+        α in dropdown(range_α, value = 3.0, label = "α")
 
         β = [β₀, β₁]
         μᵦ = [μ₀, μ₁]
-        Ωᵦ = [σ²₀ cᵦ
-              cᵦ σ²₁]
-      Ωᵢ = [s²₀ cᵢ
-            cᵢ s²₁]
+        Ωᵦ = [
+            σ²₀ ρᵦ
+            ρᵦ σ²₁
+        ]
+        Ωᵢ = [
+            s²₀ ρᵢ
+            ρᵢ s²₁
+        ]
 
-        slider_profile(β, n, p, μᵦ, Ωᵦ, Ωᵢ, σ², α; seed = 112233)
+        slider_profile(β, T, p, μᵦ, Ωᵦ, Ωᵢ, σ², α; seed = 112233)
 
     end
 
 
     @layout! test vbox(
         hbox(pad(1em, :β₀), pad(1em, :β₁), pad(1em, :μ₀), pad(1em, :μ₁)),
-        hbox(pad(1em, :σ²₀), pad(1em, :σ²₁), pad(1em, :cᵦ), hskip(2em), pad(1em, :s²₀), pad(1em, :s²₁), pad(1em, :cᵢ)),
-        hbox(pad(1em, :σ²), pad(1em, :α)),
+        hbox(
+            pad(1em, :σ²₀),
+            pad(1em, :σ²₁),
+            pad(1em, :ρᵦ),
+            hskip(2em),
+            pad(1em, :s²₀),
+            pad(1em, :s²₁),
+            pad(1em, :ρᵢ),
+        ),
+        hbox(pad(1em, :σ²), pad(1em, :T), pad(1em, :α)),
         vskip(2em),
         observe(_),
     )
@@ -206,3 +226,25 @@ result_lime = test_lime(
     stat_re0 = stat_re0,
 )
 Comment ends =#
+
+function test_iM(sᵢ,σᵢ,Tᵢ)
+    M = fill(sᵢ, Tᵢ, Tᵢ)
+    M[diagind(M)] .+= σᵢ
+    iM = inv(M)
+    x = ones(Tᵢ)
+    a = x' * iM * x
+    #r = ones(Tᵢ)
+    #r[sample(eachindex(r), 2, replace = false)] .= 0
+    r = randn(Tᵢ)
+    b = x' * iM * r
+    c = (x' * iM)
+    return a, 1/sᵢ, b, (1/sᵢ) * mean(r)
+end
+sᵢ = 1000.0
+σᵢ = 1
+Tᵢ = 10
+test_iM(sᵢ,σᵢ,Tᵢ)
+x = 1e-3:0.001:1e-2
+y = [test_iM(i,σᵢ,Tᵢ)[2] for i in x]
+plot(x, y)
+plot!(x, 1 ./ x, ls = :dash)
