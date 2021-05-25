@@ -111,20 +111,20 @@ begin
         μ₁ in slider(-1:0.01:1, value = 0.00, label = "μ₁"),
         σ²₀ in dropdown(v, value = 1e-6, label = "σ²₀"),
         σ²₁ in dropdown(v, value = 1e-6, label = "σ²₁"),
-        ρᵦ in dropdown(-1:0.1:1, value = 0.0, label = "ρᵦ"),
+        ρᵦ in dropdown(-0.9:0.1:0.9, value = 0.0, label = "ρᵦ"),
         s²₀ in dropdown(vcat(0.000177, v), value = 1, label = "s²₀"),
         s²₁ in dropdown(vcat(0.000330, v), value = 1, label = "s²₁"),
-        ρᵢ in dropdown(-1:0.1:1, value = 0.0, label = "ρᵢ"),
+        ρᵢ in dropdown(-0.9:0.1:0.9, value = 0.0, label = "ρᵢ"),
         α in dropdown(range_α, value = 1.0, label = "α")
 
         β = [β₀, β₁]
         μᵦ = [μ₀, μ₁]
-        σ²ₐ = ρᵦ * σ²₀ * σ²₁
+        σ²ₐ = ρᵦ * sqrt(σ²₀ * σ²₁)
         Ωᵦ = [
             σ²₀ σ²ₐ
             σ²ₐ σ²₁
         ]
-        s²ₐ = ρᵢ * s²₀ * s²₁
+        s²ₐ = ρᵢ * sqrt(s²₀ * s²₁)
         Ωᵢ = [
             s²₀ s²ₐ
             s²ₐ s²₁
