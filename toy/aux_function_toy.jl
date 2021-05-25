@@ -593,6 +593,8 @@ function slider_profile(
     β,
     n,
     p,
+    pf_learn,
+    pf_infer,
     fe_mu0,
     fe_var0,
     re_var0,
@@ -605,20 +607,19 @@ function slider_profile(
     # Error
     d = Normal(0, sqrt(0.01))
     noise = rand(rng, d, n)
-    # Profile
-    pf1 = [1, 0]
-    pf2 = [1, 1]
     # Mean reward
-    r̄1 = β' * pf1
-    r̄2 = β' * pf2
+    r̄1 = β' * pf_learn
+    r̄2 = β' * pf_infer
     # Reward sequance
-    rewardseq1 = r̄1 .+ noise
-    rewardseq2 = r̄2 .+ noise
+    rewardseq = r̄1 .+ noise
     # Data stream
-    datastream1 = [OneInstance(r, pf1) for r in rewardseq1]
-    datastream2 = [OneInstance(r, pf2) for r in rewardseq2]
+    datastream1 = [OneInstance(r, pf_learn) for r in rewardseq]
+    datastream2 = [OneInstance(0, pf_infer) for _ = 1:n]
+    datastream1_add0 = vcat(OneInstance(0, fill(0, p)), datastream1)
+    datastream2_add0 = vcat(OneInstance(0, fill(0, p)), datastream2)
 
-    # Learning profile 1
+
+    # Learn from profile_learn
     stats_lime_re_learn, stats_lime_fe_learn = onearm(
         datastream1,
         StatLIMERe(
@@ -638,9 +639,8 @@ function slider_profile(
             (fe_var0 = fe_var0, fe_mu0 = fe_mu0, noise_var0 = noise_var0),
         ),
     )
-    # Compute UCBs
-    datastream1_add0 = vcat(OneInstance(0, fill(0, p)), datastream1)
-    inds_lime_learn1 = [
+    # Compute UCBs for profile_learn
+    inds_lime_learn = [
         getucb(
             stats_lime_re_learn[i],
             stats_lime_fe_learn[i],
@@ -648,8 +648,8 @@ function slider_profile(
             α = α,
         ) for i = 1:(n+1)
     ]
-    datastream2_add0 = vcat(OneInstance(0, fill(0, p)), datastream2)
-    inds_lime_infer2 = [
+    # Compute UCBs for profile_infer
+    inds_lime_infer = [
         getucb(
             stats_lime_re_learn[i],
             stats_lime_fe_learn[i],
@@ -658,48 +658,9 @@ function slider_profile(
         ) for i = 1:(n+1)
     ]
 
-    # Learning profile 2
-    stats_lime_re_learn, stats_lime_fe_learn = onearm(
-        datastream2,
-        StatLIMERe(
-            0, # nchosen
-            zeros(0, p), # feature/design matrix
-            Float64[], # reward
-            re_var0, # re_omg
-            zeros(p, p), # re_rho
-            zeros(p), # re_bhat
-            zeros(p, p), # C_var
-            zeros(p), # C_mu
-            (re_var0 = re_var0, noise_var0 = noise_var0),
-        ),
-        StatLIMEFe(
-            fe_var0, # fe_var
-            fe_mu0, # fe_mu
-            (fe_var0 = fe_var0, fe_mu0 = fe_mu0, noise_var0 = noise_var0),
-        ),
-    )
-
-    # Compute UCBs
-    inds_lime_learn2 = [
-        getucb(
-            stats_lime_re_learn[i],
-            stats_lime_fe_learn[i],
-            datastream2_add0[i].feature,
-            α = α,
-        ) for i = 1:(n+1)
-    ]
-    inds_lime_infer1 = [
-        getucb(
-            stats_lime_re_learn[i],
-            stats_lime_fe_learn[i],
-            datastream1_add0[i].feature,
-            α = α,
-        ) for i = 1:(n+1)
-    ]
-
-    # Plot
+    # Plot UCB
     inds =
-        [inds_lime_learn1, inds_lime_infer2, inds_lime_infer1, inds_lime_learn2]
+        [inds_lime_learn, inds_lime_infer]
 
     ylim_up = maximum([
         maximum([maximum(getproperty.(coll, :ub)) for coll in inds]),
@@ -711,21 +672,55 @@ function slider_profile(
         r̄1,
         r̄2,
     ])
-    plts = [plotindex(coll) for coll in inds]
-    plot(
-        plts...,
-        leg = false,
+
+    plts_ucb = [plotindex(coll) for coll in inds]
+    plt_ucb = plot(
+        plts_ucb...,
+        #leg = false,
         ylabel = "UCB",
-        title = ["Learning x = $(pf1)" "Infering x = $(pf2)" "Infering x = $(pf1)" "Learning x = $(pf2)"],
+        title = ["Learning x = $(pf_learn)" "Infering x⁺ = $(pf_infer)"],
         ylims = (ylim_dw, ylim_up),
         #xticks = 0:1:n,
-        guidefontsize = 8,
-        legendfontsize = 8,
-        tickfontsize = 8,
-        titlefontsize = 8,
-        size = (1200, 800),
     )
-    hline!([r̄1 r̄2 r̄1 r̄2], lc = :green, ls = :dash)
+    hline!([r̄1 r̄2], lc = :green, ls = :dash, label = "True r̄")
+
+    # Is width decreasing?
+    width_learn = getproperty.(inds_lime_learn, :width)
+    width_infer = getproperty.(inds_lime_infer, :width)
+    plt_width = plot(
+        plot(0:1:n, width_learn),
+        plot(0:1:n, width_infer),
+        legend = :bottomright,
+        label = ["width for learning profile" "width for inferring profile"],
+    )
+
+    # Is variance decreasing?
+    omg = getfield.(stats_lime_re_learn, :re_omg)
+    s1 = [m[1, 1] for m in omg]
+    s2 = [m[2, 2] for m in omg]
+    s12 = [m[2, 1] for m in omg]
+    plt_omg = plot(
+        plot(0:1:n, s1),
+        plot(0:1:n, s2),
+        plot(0:1:n, s12),
+        layout = (1, 3),
+        label = ["s₀²" "s₁²" "cov"],
+        lc = [:blue :red :purple]
+    )
+
+    # Is center correct?
+    bhat = getfield.(stats_lime_re_learn, :re_bhat)
+    b̂₀ = [v[1] for v in bhat]
+    b̂₁ = [v[2] for v in bhat]
+    plt_bhat = plot(plot(0:1:n, b̂₀), plot(0:1:n, b̂₁), label = ["b̂₀" "b̂₁"], lc = [:blue :red])
+
+    plot(plt_ucb, plt_width, plt_omg, plt_bhat, layout = (4, 1),
+    guidefontsize = 8,
+    legendfontsize = 8,
+    tickfontsize = 8,
+    titlefontsize = 8,
+    size = (1200, 800),)
+
 end
 
 function test_beta(datastream; q = 0.95, stat_beta0 = Beta(1, 1))
