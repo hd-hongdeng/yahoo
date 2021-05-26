@@ -119,8 +119,8 @@ begin
             β₁ in slider(-1:0.01:1, value = 0.03, label = "β₁"),
             μ₀ in slider(-1:0.01:1, value = 0.00, label = "μ₀"),
             μ₁ in slider(-1:0.01:1, value = 0.00, label = "μ₁"),
-            σ₀² in dropdown(v, value = 1e-6, label = "σ₀²"),
-            σ₁² in dropdown(v, value = 1e-6, label = "σ₁²"),
+            τ₀² in dropdown(v, value = 1e-6, label = "τ₀²"),
+            τ₁² in dropdown(v, value = 1e-6, label = "τ₁²"),
             ρᵦ in dropdown(-0.9:0.1:0.9, value = 0.0, label = "ρᵦ"),
             s₀² in dropdown(vcat(0.000177, v), value = 1, label = "s₀²"),
             s₁² in dropdown(vcat(0.000330, v), value = 1, label = "s₁²"),
@@ -131,10 +131,10 @@ begin
 
             β = [β₀, β₁]
             μᵦ = [μ₀, μ₁]
-            σₐ² = ρᵦ * sqrt(σ₀² * σ₁²)
+            τₐ² = ρᵦ * sqrt(τ₀² * τ₁²)
             Ωᵦ = [
-                σ₀² σₐ²
-                σₐ² σ₁²
+                τ₀² τₐ²
+                τₐ² τ₁²
             ]
             sₐ² = ρᵢ * sqrt(s₀² * s₁²)
             Ωᵢ = [
@@ -150,8 +150,8 @@ begin
     @layout! test vbox(
         hbox(pad(1em, :β₀), pad(1em, :β₁), pad(1em, :μ₀), pad(1em, :μ₁)),
         hbox(
-            pad(1em, :σ₀²),
-            pad(1em, :σ₁²),
+            pad(1em, :τ₀²),
+            pad(1em, :τ₁²),
             pad(1em, :ρᵦ),
             hskip(2em),
             pad(1em, :s₀²),
